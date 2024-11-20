@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-starknet-id = { git = "https://github.com/starknet-id/starknetid.rs", rev = "2b30c2453b96789a628c86d2edebb1023fa2e77d" }
 starknet = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "c974e5cb42e8d8344cee910b76005ec46b4dd3ed" }
 utu_bridge_deposit_address = { path = "../utu_bridge_deposit_address" }
 axum_auto_routes = { git = "https://github.com/Th0rgal/axum_auto_routes", rev = "ef190613942241f8f93a554cad7d64581a8a0916" }
