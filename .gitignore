@@ -1,0 +1,8 @@
+.env.keys
+.env.decrypted
+.secrets
+.idea
+/target
+.env.private
+Cargo.lock
+.DS_Store
