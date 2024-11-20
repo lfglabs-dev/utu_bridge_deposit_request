@@ -85,15 +85,10 @@ pub async fn process_block(state: &Arc<AppState>, _block_hash: BlockHash) -> Res
             }
         }
 
-        // we fetch 60 txs at a time and a block can have more so we continue fetching until we analyze all txs
+        // we fetch 60 txs at a time and a block can have more so
+        // we continue fetching until we analyze all txs
         offset += 1;
-        //todo: uncomment after testing
-        // if total <= offset * 60 {
-        //     break;
-        // }
-
-        // todo: remove this, and uncomment above, it's just for testing as api doesn't work on testnet
-        if offset == 1 {
+        if total <= offset * 60 {
             break;
         }
     }

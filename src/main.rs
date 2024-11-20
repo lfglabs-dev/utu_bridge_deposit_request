@@ -94,17 +94,17 @@ async fn main() {
     let block_state = shared_state.clone();
     let block_task = tokio::spawn(async move {
         loop {
-            //todo: to test code
-            let block_hash = BlockHash::from_str(
-                "0000000001b712801b9b63f66e5c7a283d04f7fd71597eb676a428e191e4f690",
-            )
-            .unwrap();
-            if let Err(e) = process_block::process_block(&block_state, block_hash).await {
-                block_state
-                    .logger
-                    .severe(format!("Failed to process block: {}", e));
-            }
-            // todo: end testing
+            //! used to test code
+            // let block_hash = BlockHash::from_str(
+            //     "0000000001b712801b9b63f66e5c7a283d04f7fd71597eb676a428e191e4f690",
+            // )
+            // .unwrap();
+            // if let Err(e) = process_block::process_block(&block_state, block_hash).await {
+            //     block_state
+            //         .logger
+            //         .severe(format!("Failed to process block: {}", e));
+            // }
+            // ! end testing
 
             // Wait for changes in the blocks
             block_state.notifier.notified().await;
