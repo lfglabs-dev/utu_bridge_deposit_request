@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::pub_struct;
 
 pub mod bitcoin_rpc;
+pub mod blacklist;
 pub mod general;
 pub mod macros;
 pub mod starknet;

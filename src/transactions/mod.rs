@@ -12,6 +12,7 @@ use crate::{
     models::claim::ClaimData,
     state::{transactions::TxStatus, AppState},
     utils::{
+        blacklist::blacklist_deposits,
         general::{get_current_timestamp, to_hex},
         starknet::prepare_multicall,
     },
@@ -19,7 +20,7 @@ use crate::{
 
 pub async fn build_and_run_multicall(state: &Arc<AppState>, transactions: Vec<ClaimData>) {
     // Prepare the multicall
-    let execute_calls = prepare_multicall(state, transactions).await;
+    let (execute_calls, tx_ids) = prepare_multicall(state, transactions).await;
 
     if execute_calls.is_empty() {
         state
@@ -46,6 +47,12 @@ pub async fn build_and_run_multicall(state: &Arc<AppState>, transactions: Vec<Cl
                     to_hex(&tx_hash),
                     process_nonce
                 ));
+                if let Err(e) = blacklist_deposits(state, tx_ids).await {
+                    state.logger.severe(format!(
+                        "Error while blacklisting deposits for process {}: {:?}",
+                        process_nonce, e
+                    ));
+                }
             } else {
                 state.logger.severe(format!(
                     "Transaction {:?} failed in process with nonce {}",

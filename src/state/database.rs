@@ -1,6 +1,6 @@
 use mongodb::{bson::doc, ClientSession, Database};
 
-use crate::models::database::DepositAddressDocument;
+use crate::models::database::{BlacklistedDepositDocument, DepositAddressDocument};
 
 use super::DatabaseError;
 
@@ -10,6 +10,11 @@ pub trait DatabaseExt {
         session: &mut ClientSession,
         receiver_address: String,
     ) -> Result<String, DatabaseError>;
+    async fn blacklist_deposits(
+        &self,
+        session: &mut ClientSession,
+        tx_id: Vec<String>,
+    ) -> Result<(), DatabaseError>;
 }
 
 impl DatabaseExt for Database {
@@ -29,5 +34,23 @@ impl DatabaseExt for Database {
             Some(doc) => Ok(doc.starknet_address),
             None => Err(DatabaseError::NotFound),
         }
+    }
+
+    async fn blacklist_deposits(
+        &self,
+        session: &mut ClientSession,
+        tx_ids: Vec<String>,
+    ) -> Result<(), DatabaseError> {
+        let documents: Vec<BlacklistedDepositDocument> = tx_ids
+            .into_iter()
+            .map(|id| BlacklistedDepositDocument { tx_id: id })
+            .collect();
+        self.collection::<BlacklistedDepositDocument>("blacklisted_deposits")
+            .insert_many(documents)
+            .session(&mut *session)
+            .await
+            .map_err(DatabaseError::QueryFailed)?;
+
+        Ok(())
     }
 }

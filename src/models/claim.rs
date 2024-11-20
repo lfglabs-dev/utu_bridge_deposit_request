@@ -14,4 +14,5 @@ pub struct ClaimData {
     pub rune_id: FieldElement,
     pub amount: (FieldElement, FieldElement),
     pub target_addr: Address,
+    pub tx_id: String,
 }

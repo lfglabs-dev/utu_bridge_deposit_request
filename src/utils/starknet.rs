@@ -45,8 +45,12 @@ pub async fn get_account() -> SingleOwnerAccount<JsonRpcClient<HttpTransport>, L
     )
 }
 
-pub async fn prepare_multicall(state: &Arc<AppState>, transactions: Vec<ClaimData>) -> Vec<Call> {
+pub async fn prepare_multicall(
+    state: &Arc<AppState>,
+    transactions: Vec<ClaimData>,
+) -> (Vec<Call>, Vec<String>) {
     let mut calls: Vec<Call> = Vec::new();
+    let mut tx_ids: Vec<String> = Vec::new();
 
     for transaction in transactions {
         // ensure the rune contract is deployed
@@ -62,10 +66,11 @@ pub async fn prepare_multicall(state: &Arc<AppState>, transactions: Vec<ClaimDat
                     transaction.target_addr.felt,
                 ],
             });
+            tx_ids.push(transaction.tx_id);
         }
     }
 
-    calls
+    (calls, tx_ids)
 }
 
 pub fn compute_rune_contract(rune_id: FieldElement) -> FieldElement {
