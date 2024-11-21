@@ -7,6 +7,8 @@ mod state;
 mod transactions;
 use axum::http::StatusCode;
 use axum_auto_routes::route;
+use bitcoin::consensus::deserialize;
+use bitcoin::Block;
 use bitcoincore_rpc::RpcApi;
 use models::blocks::BlockWithTransactions;
 use mongodb::bson::doc;
@@ -16,6 +18,7 @@ use state::transactions::TransactionBuilderStateTrait;
 use state::AppState;
 use state::WithState;
 use tokio::time::sleep;
+use std::io::Read;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -50,8 +53,12 @@ async fn main() {
         .expect("Failed to connect to socket");
 
     // Subscribe to topics
+    // subscriber
+    //     .set_subscribe(b"hashblock")
+    //     .expect("Failed to subscribe to hashblock");
+
     subscriber
-        .set_subscribe(b"hashblock")
+        .set_subscribe(b"rawblock")
         .expect("Failed to subscribe to hashblock");
 
     let zmq_state = shared_state.clone();
@@ -60,30 +67,62 @@ async fn main() {
             // Wait for a message from the socket
             match subscriber.recv_msg(0) {
                 Ok(topic) => {
-                    if topic.as_str() == Some("hashblock") {
-                        let block_hash_msg = subscriber
-                            .recv_msg(0)
-                            .expect("Failed to receive block hash");
+                    if topic.as_str() == Some("rawblock") {
+                        let raw_block_msg = subscriber.recv_msg(0).expect("Failed to receive raw block");
 
-                        let block_hash = match get_block_hash(block_hash_msg) {
-                            Ok(block_hash) => block_hash,
+                        // Collect the bytes into a Vec<u8>, handling potential errors
+                        let raw_block_data: Vec<u8> = match raw_block_msg.bytes().collect::<Result<Vec<u8>, _>>() {
+                            Ok(data) => data,
                             Err(e) => {
-                                zmq_state
-                                    .logger
-                                    .info(format!("Failed to get block hash: {}", e));
-                                continue;
+                                zmq_state.logger.info(format!("Failed to collect raw block bytes: {}", e));
+                                return; // Exit the current iteration if there's an error
                             }
                         };
 
-                        zmq_state.logger.info(format!("Received block hash: {}", block_hash));
+                        match deserialize::<Block>(&raw_block_data) {
+                            Ok(block) => {
+                                let block_hash = block.block_hash();
+                                zmq_state.logger.info(format!("Received block hash: {}", block_hash));
 
-                        zmq_state
-                            .with_blocks(|blocks| {
-                                blocks.add_block(block_hash);
-                            })
-                            .await;
-                        zmq_state.notifier.notify_one();
+                                zmq_state
+                                    .with_blocks(|blocks| {
+                                        blocks.add_block(block_hash);
+                                    })
+                                    .await;
+                                zmq_state.notifier.notify_one();
+                            }
+                            Err(e) => {
+                                // Handle deserialization errors
+                                zmq_state
+                                    .logger
+                                    .info(format!("Failed to deserialize raw block: {}", e));
+                            }
+                        }
                     }
+                    
+                    // if topic.as_str() == Some("hashblock") {
+                    //     let block_hash_msg = subscriber
+                    //         .recv_msg(0)
+                    //         .expect("Failed to receive block hash");
+
+                    //     let block_hash = match get_block_hash(block_hash_msg) {
+                    //         Ok(block_hash) => block_hash,
+                    //         Err(e) => {
+                    //             zmq_state
+                    //                 .logger
+                    //                 .info(format!("Failed to get block hash: {}", e));
+                    //             continue;
+                    //         }
+                    //     };
+                    //     zmq_state.logger.info(format!("Received block hash: {}", block_hash));
+
+                    //     zmq_state
+                    //         .with_blocks(|blocks| {
+                    //             blocks.add_block(block_hash);
+                    //         })
+                    //         .await;
+                    //     zmq_state.notifier.notify_one();
+                    // }
                 }
                 Err(e) => eprintln!("Failed to receive message: {}", e),
             }
