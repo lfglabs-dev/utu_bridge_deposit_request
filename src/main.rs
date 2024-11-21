@@ -7,7 +7,6 @@ mod state;
 mod transactions;
 use axum::http::StatusCode;
 use axum_auto_routes::route;
-use bitcoin::BlockHash;
 use bitcoincore_rpc::RpcApi;
 use models::blocks::BlockWithTransactions;
 use mongodb::bson::doc;
@@ -16,11 +15,11 @@ use state::init::AppStateTraitInitializer;
 use state::transactions::TransactionBuilderStateTrait;
 use state::AppState;
 use state::WithState;
-use std::str::FromStr;
+use tokio::time::sleep;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
-use std::{env, thread};
+use std::env;
 use transactions::build_and_run_multicall;
 use utils::bitcoin_rpc::get_block_hash;
 use utils::general::get_current_timestamp;
@@ -76,6 +75,8 @@ async fn main() {
                             }
                         };
 
+                        zmq_state.logger.info(format!("Received block hash: {}", block_hash));
+
                         zmq_state
                             .with_blocks(|blocks| {
                                 blocks.add_block(block_hash);
@@ -87,25 +88,13 @@ async fn main() {
                 Err(e) => eprintln!("Failed to receive message: {}", e),
             }
 
-            thread::sleep(Duration::from_millis(1));
+            sleep(Duration::from_millis(1)).await;
         }
     });
 
     let block_state = shared_state.clone();
     let block_task = tokio::spawn(async move {
         loop {
-            //! used to test code
-            // let block_hash = BlockHash::from_str(
-            //     "0000000001b712801b9b63f66e5c7a283d04f7fd71597eb676a428e191e4f690",
-            // )
-            // .unwrap();
-            // if let Err(e) = process_block::process_block(&block_state, block_hash).await {
-            //     block_state
-            //         .logger
-            //         .severe(format!("Failed to process block: {}", e));
-            // }
-            // ! end testing
-
             // Wait for changes in the blocks
             block_state.notifier.notified().await;
 
@@ -178,7 +167,7 @@ async fn main() {
             }
 
             // We wait 5 seconds before checking again
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            sleep(tokio::time::Duration::from_secs(5)).await;
         }
     });
 

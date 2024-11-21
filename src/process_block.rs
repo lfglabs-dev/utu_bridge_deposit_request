@@ -19,7 +19,7 @@ lazy_static::lazy_static! {
     static ref UTU_API_URL: String = env::var("UTU_API_URL").expect("UTU_API_URL must be set");
 }
 
-pub async fn process_block(state: &Arc<AppState>, _block_hash: BlockHash) -> Result<()> {
+pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Result<()> {
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
         Err(_) => {
@@ -38,8 +38,7 @@ pub async fn process_block(state: &Arc<AppState>, _block_hash: BlockHash) -> Res
         let url = format!(
             "{}/runes/v1/blocks/{}/activity?offset={}&limit=60",
             *HIRO_API_URL,
-            // block_hash,
-            "871055", // testing value
+            block_hash.to_string(),
             offset
         );
         let client = Client::new();
@@ -92,6 +91,8 @@ pub async fn process_block(state: &Arc<AppState>, _block_hash: BlockHash) -> Res
             break;
         }
     }
+
+    state.logger.info(format!("Completed processing block: {}", block_hash));
 
     if let Err(err) = session.commit_transaction().await {
         return Err(anyhow::anyhow!("Database error: {:?}", err));
