@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use starknet::core::types::FieldElement;
+use starknet::core::types::Felt;
 
 use crate::utils::Address;
 
@@ -10,9 +10,27 @@ pub struct ClaimDepositDataRes {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Signature {
+    pub r: Felt,
+    pub s: Felt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimData {
-    pub rune_id: FieldElement,
-    pub amount: (FieldElement, FieldElement),
+    pub rune_id: Felt,
+    pub amount: (Felt, Felt),
     pub target_addr: Address,
     pub tx_id: String,
+    pub sig: Signature,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaimCalldata {
+    pub rune_id: Felt,
+    pub amount: (Felt, Felt),
+    pub target_addr: Address,
+    pub tx_id: Vec<Felt>,
+    pub tx_id_str: String,
+    pub sig: Signature,
+    pub transaction_struct: Vec<Felt>,
 }

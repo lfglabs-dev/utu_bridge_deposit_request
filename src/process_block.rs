@@ -1,16 +1,19 @@
-use std::{env, sync::Arc};
+use std::{env, str::FromStr, sync::Arc};
 
 use anyhow::Result;
-use bitcoin::BlockHash;
+use bitcoin::{BlockHash, Transaction as BitcoinTransaction, Txid};
+use bitcoincore_rpc::RpcApi;
 use reqwest::Client;
 use serde_json::json;
+use starknet::core::types::Felt;
 
 use crate::{
     models::{
-        claim::ClaimDepositDataRes,
+        claim::{ClaimCalldata, ClaimDepositDataRes},
         hiro::{BlockActivity, Operation},
     },
     state::{database::DatabaseExt, transactions::TransactionBuilderStateTrait, AppState},
+    utils::calldata::{get_transaction_struct_felt, hex_to_hash_rev},
 };
 
 lazy_static::lazy_static! {
@@ -72,7 +75,38 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
 
                         if claim_res.status().is_success() {
                             let claim_data = claim_res.json::<ClaimDepositDataRes>().await?;
-                            state.transactions.add_transaction(claim_data.data).await;
+
+                            // Retrieve the complete transaction from bitcoin RPC
+                            match state.bitcoin_provider.get_raw_transaction_info(
+                                &Txid::from_str(&tx.location.tx_id).unwrap(),
+                                Some(&block_hash),
+                            ) {
+                                Ok(tx_info) => {
+                                    let transaction_struct = get_transaction_struct_felt(
+                                        &state.bitcoin_provider,
+                                        tx_info,
+                                    );
+                                    let tx_id = match Txid::from_str(&claim_data.data.tx_id) {
+                                        Ok(tx_id) => Some(tx_id),
+                                        Err(_) => None,
+                                    };
+                                    state
+                                        .transactions
+                                        .add_transaction(ClaimCalldata {
+                                            rune_id: claim_data.data.rune_id,
+                                            amount: claim_data.data.amount,
+                                            target_addr: claim_data.data.target_addr,
+                                            sig: claim_data.data.sig,
+                                            tx_id: hex_to_hash_rev(tx_id),
+                                            tx_id_str: claim_data.data.tx_id,
+                                            transaction_struct,
+                                        })
+                                        .await;
+                                }
+                                Err(err) => {
+                                    state.logger.warning(format!("Failed to retrieve transaction data for tx_id: {} with error: {:?}", tx.location.tx_id, err));
+                                }
+                            }
                         } else {
                             state.logger.warning(format!(
                                 "Failed to retrieve claim data for deposit address: {} with error: {:?}",
@@ -92,7 +126,9 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
         }
     }
 
-    state.logger.info(format!("Completed processing block: {}", block_hash));
+    state
+        .logger
+        .info(format!("Completed processing block: {}", block_hash));
 
     if let Err(err) = session.commit_transaction().await {
         return Err(anyhow::anyhow!("Database error: {:?}", err));

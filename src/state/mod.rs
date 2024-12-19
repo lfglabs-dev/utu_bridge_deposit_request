@@ -3,7 +3,7 @@ use bitcoincore_rpc::Client;
 use mongodb::Database;
 use starknet::{
     accounts::SingleOwnerAccount,
-    core::types::FieldElement,
+    core::types::Felt,
     providers::{jsonrpc::HttpTransport, JsonRpcClient},
     signers::LocalWallet,
 };
@@ -13,7 +13,7 @@ use axum::{body::Body, Router};
 use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
 
-use crate::{logger::Logger, models::claim::ClaimData};
+use crate::{logger::Logger, models::claim::ClaimCalldata};
 
 pub mod blocks;
 pub mod database;
@@ -58,8 +58,8 @@ pub struct TransactionBuilderState {
     pub max_wait_time_ms: u64,
     pub min_wait_time_sec: u64,
     pub last_sent_timestamp_ms: RwLock<u64>,
-    pub nonce: RwLock<FieldElement>,
-    pub data: RwLock<Vec<ClaimData>>,
+    pub nonce: RwLock<Felt>,
+    pub data: RwLock<Vec<ClaimCalldata>>,
 }
 
 // required for axum_auto_routes
@@ -113,6 +113,6 @@ impl AppState {
 
 impl TransactionBuilderState {
     impl_with_lock!(with_last_sent, last_sent_timestamp_ms, u64);
-    impl_with_lock!(with_nonce, nonce, FieldElement);
-    impl_with_lock!(with_transactions, data, Vec<ClaimData>);
+    impl_with_lock!(with_nonce, nonce, Felt);
+    impl_with_lock!(with_transactions, data, Vec<ClaimCalldata>);
 }

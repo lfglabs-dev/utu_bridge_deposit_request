@@ -1,11 +1,13 @@
 use std::{env, sync::Arc};
 
 use anyhow::Result;
+use bigdecimal::num_bigint::BigInt;
+use num_integer::Integer;
 use reqwest::Url;
 use starknet::{
-    accounts::{Call, ConnectedAccount, SingleOwnerAccount},
+    accounts::{ConnectedAccount, SingleOwnerAccount},
     core::{
-        types::{BlockId, BlockTag, FieldElement},
+        types::{BlockId, BlockTag, Call, Felt},
         utils::{get_udc_deployed_address, UdcUniqueness},
     },
     macros::selector,
@@ -13,13 +15,14 @@ use starknet::{
     signers::{LocalWallet, SigningKey},
 };
 
-use crate::{models::claim::ClaimData, state::AppState};
+use crate::{models::claim::ClaimCalldata, state::AppState};
 
 use super::general::get_current_timestamp;
 
 lazy_static::lazy_static! {
-    static ref RUNE_BRIDGE_CONTRACT: FieldElement = FieldElement::from_hex_be(&env::var("RUNE_BRIDGE_CONTRACT").expect("RUNE_BRIDGE_CONTRACT must be set")).unwrap();
-    static ref SAG_CLASS_HASH: FieldElement = FieldElement::from_hex_be(&env::var("SAG_CLASS_HASH").expect("SAG_CLASS_HASH must be set")).unwrap();
+    static ref RUNE_BRIDGE_CONTRACT: Felt = Felt::from_hex(&env::var("RUNE_BRIDGE_CONTRACT").expect("RUNE_BRIDGE_CONTRACT must be set")).unwrap();
+    static ref SAG_CLASS_HASH: Felt = Felt::from_hex(&env::var("SAG_CLASS_HASH").expect("SAG_CLASS_HASH must be set")).unwrap();
+    static ref TWO_POW_128: BigInt = BigInt::from(2).pow(128);
 }
 
 pub async fn get_account() -> SingleOwnerAccount<JsonRpcClient<HttpTransport>, LocalWallet> {
@@ -28,18 +31,13 @@ pub async fn get_account() -> SingleOwnerAccount<JsonRpcClient<HttpTransport>, L
     ));
     let chainid = provider.chain_id().await.unwrap();
     let signer = LocalWallet::from(SigningKey::from_secret_scalar(
-        FieldElement::from_hex_be(
-            &env::var("ACCOUNT_PRIV_KEY").expect("ACCOUNT_PRIV_KEY must be set"),
-        )
-        .unwrap(),
+        Felt::from_hex(&env::var("ACCOUNT_PRIV_KEY").expect("ACCOUNT_PRIV_KEY must be set"))
+            .unwrap(),
     ));
     SingleOwnerAccount::new(
         provider,
         signer,
-        FieldElement::from_hex_be(
-            &env::var("ACCOUNT_ADDRESS").expect("ACCOUNT_ADDRESS must be set"),
-        )
-        .unwrap(),
+        Felt::from_hex(&env::var("ACCOUNT_ADDRESS").expect("ACCOUNT_ADDRESS must be set")).unwrap(),
         chainid,
         starknet::accounts::ExecutionEncoding::New,
     )
@@ -47,7 +45,7 @@ pub async fn get_account() -> SingleOwnerAccount<JsonRpcClient<HttpTransport>, L
 
 pub async fn prepare_multicall(
     state: &Arc<AppState>,
-    transactions: Vec<ClaimData>,
+    transactions: Vec<ClaimCalldata>,
 ) -> (Vec<Call>, Vec<String>) {
     let mut calls: Vec<Call> = Vec::new();
     let mut tx_ids: Vec<String> = Vec::new();
@@ -56,36 +54,39 @@ pub async fn prepare_multicall(
         // ensure the rune contract is deployed
         let rune_contract = compute_rune_contract(transaction.rune_id);
         if is_deployed_on_starknet(state, rune_contract).await.is_ok() {
+            let mut calldata = vec![
+                transaction.rune_id,
+                transaction.amount.0,
+                transaction.amount.1,
+                transaction.target_addr.felt,
+            ];
+            calldata.extend(transaction.tx_id.iter());
+            calldata.push(transaction.sig.r);
+            calldata.push(transaction.sig.s);
+            calldata.extend(transaction.transaction_struct.iter());
+
             calls.push(Call {
                 to: *RUNE_BRIDGE_CONTRACT,
                 selector: selector!("claim_runes"),
-                calldata: vec![
-                    transaction.rune_id,
-                    transaction.amount.0,
-                    transaction.amount.1,
-                    transaction.target_addr.felt,
-                ],
+                calldata,
             });
-            tx_ids.push(transaction.tx_id);
+            tx_ids.push(transaction.tx_id_str);
         }
     }
 
     (calls, tx_ids)
 }
 
-pub fn compute_rune_contract(rune_id: FieldElement) -> FieldElement {
+pub fn compute_rune_contract(rune_id: Felt) -> Felt {
     get_udc_deployed_address(
-        FieldElement::ZERO,
+        Felt::ZERO,
         *SAG_CLASS_HASH,
         &UdcUniqueness::NotUnique,
         &[rune_id],
     )
 }
 
-pub async fn is_deployed_on_starknet(
-    state: &Arc<AppState>,
-    contract_address: FieldElement,
-) -> Result<()> {
+pub async fn is_deployed_on_starknet(state: &Arc<AppState>, contract_address: Felt) -> Result<()> {
     let _ = state
         .starknet_provider
         .get_class_hash_at(BlockId::Tag(BlockTag::Latest), contract_address)
@@ -115,4 +116,16 @@ pub async fn check_last_nonce_update_timestamp(state: &Arc<AppState>) {
             .with_last_sent(|t| *t = current_timestamp)
             .await;
     }
+}
+
+#[allow(dead_code)]
+pub fn to_uint256(n: BigInt) -> (Felt, Felt) {
+    let (n_high, n_low) = n.div_rem(&TWO_POW_128);
+    let (_, low_bytes) = n_low.to_bytes_be();
+    let (_, high_bytes) = n_high.to_bytes_be();
+
+    (
+        Felt::from_bytes_be_slice(&low_bytes),
+        Felt::from_bytes_be_slice(&high_bytes),
+    )
 }
