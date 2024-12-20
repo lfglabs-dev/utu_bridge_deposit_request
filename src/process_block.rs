@@ -76,6 +76,8 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
                             "starknet_addr": starknet_addr,
                             "bitcoin_deposit_addr": receiver_address,
                             "tx_id": tx.location.tx_id,
+                            "tx_vout": tx.location.vout,
+                            "tx_addr": tx.address,
                         });
                         let claim_res = client.post(&url).json(&payload).send().await?;
 
