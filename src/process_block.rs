@@ -59,11 +59,11 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
             total = block_activity.total;
 
             for tx in block_activity.results {
-                if tx.operation == Operation::Send
-                    && tx.receiver_address.is_some()
+                if tx.operation == Operation::Receive
+                    && tx.address.is_some()
                     && supported_runes.contains(&tx.rune.id)
                 {
-                    let receiver_address = tx.receiver_address.clone().unwrap();
+                    let receiver_address = tx.address.clone().unwrap();
                     if let Ok(starknet_addr) = state
                         .db
                         .is_deposit_addr(&mut session, receiver_address.clone())
@@ -77,7 +77,6 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
                             "bitcoin_deposit_addr": receiver_address,
                             "tx_id": tx.location.tx_id,
                             "tx_vout": tx.location.vout,
-                            "tx_addr": tx.address,
                         });
                         let claim_res = client.post(&url).json(&payload).send().await?;
 
