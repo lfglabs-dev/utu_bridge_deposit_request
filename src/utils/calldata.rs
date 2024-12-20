@@ -181,6 +181,7 @@ pub fn hex_char_to_nibble(hex_char: u8) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 pub fn from_hex(hex_string: &str) -> Vec<u8> {
     assert!(
         hex_string.len() % 2 == 0,
