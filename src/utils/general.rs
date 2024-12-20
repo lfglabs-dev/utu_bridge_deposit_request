@@ -1,7 +1,7 @@
 use std::fmt::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use starknet::core::types::FieldElement;
+use starknet::core::types::Felt;
 
 /// Get the current timestamp in milliseconds
 pub fn get_current_timestamp() -> u64 {
@@ -12,7 +12,7 @@ pub fn get_current_timestamp() -> u64 {
     since_the_epoch.as_millis() as u64
 }
 
-pub fn to_hex(felt: &FieldElement) -> String {
+pub fn to_hex(felt: &Felt) -> String {
     let bytes = felt.to_bytes_be();
     let mut result = String::with_capacity(bytes.len() * 2 + 2);
     result.push_str("0x");

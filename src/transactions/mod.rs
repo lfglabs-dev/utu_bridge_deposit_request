@@ -2,14 +2,14 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
 use starknet::{
-    accounts::{Account, Call},
-    core::types::{FieldElement, TransactionExecutionStatus, TransactionStatus},
+    accounts::Account,
+    core::types::{Call, Felt, TransactionExecutionStatus, TransactionStatus},
     providers::Provider,
 };
 use tokio::time::sleep;
 
 use crate::{
-    models::claim::ClaimData,
+    models::claim::ClaimCalldata,
     state::{transactions::TxStatus, AppState},
     utils::{
         blacklist::blacklist_deposits,
@@ -18,7 +18,7 @@ use crate::{
     },
 };
 
-pub async fn build_and_run_multicall(state: &Arc<AppState>, transactions: Vec<ClaimData>) {
+pub async fn build_and_run_multicall(state: &Arc<AppState>, transactions: Vec<ClaimCalldata>) {
     // Prepare the multicall
     let (execute_calls, tx_ids) = prepare_multicall(state, transactions).await;
 
@@ -73,8 +73,8 @@ pub async fn build_and_run_multicall(state: &Arc<AppState>, transactions: Vec<Cl
 pub async fn execute_multicall(
     state: &Arc<AppState>,
     calls: Vec<Call>,
-    nonce: FieldElement,
-) -> Result<FieldElement> {
+    nonce: Felt,
+) -> Result<Felt> {
     // We ensure transaction can be sent
     state
         .logger
@@ -110,8 +110,8 @@ async fn can_send_tx(state: &Arc<AppState>) -> bool {
 pub async fn _execute_multicall_common(
     state: &Arc<AppState>,
     calls: Vec<Call>,
-    nonce: FieldElement,
-) -> Result<FieldElement> {
+    nonce: Felt,
+) -> Result<Felt> {
     let execution = state
         .starknet_account
         .execute(calls)
@@ -120,16 +120,13 @@ pub async fn _execute_multicall_common(
         Ok(_) => match execution
             .nonce(nonce)
             // harcode max fee to 0.0040 ETH
-            .max_fee(FieldElement::from(4000000000000000_u64))
+            .max_fee(Felt::from(4000000000000000_u64))
             .send()
             .await
         {
             Ok(tx_result) => {
                 // We update the locks and drop them right away
-                state
-                    .transactions
-                    .with_nonce(|n| *n += FieldElement::ONE)
-                    .await;
+                state.transactions.with_nonce(|n| *n += Felt::ONE).await;
                 state
                     .transactions
                     .with_last_sent(|t| *t = get_current_timestamp())
@@ -156,7 +153,7 @@ pub async fn _execute_multicall_common(
     }
 }
 
-pub async fn get_transaction_status(state: &Arc<AppState>, tx_hash: FieldElement) -> TxStatus {
+pub async fn get_transaction_status(state: &Arc<AppState>, tx_hash: Felt) -> TxStatus {
     let max_attempts = 50;
     let mut attempts = 0;
     let delay = Duration::from_secs(10);

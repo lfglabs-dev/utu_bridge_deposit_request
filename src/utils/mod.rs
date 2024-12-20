@@ -1,18 +1,20 @@
 use std::fmt;
 
-use ::starknet::core::types::FieldElement;
+use ::starknet::core::types::Felt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::pub_struct;
 
 pub mod bitcoin_rpc;
 pub mod blacklist;
+pub mod byte_array;
+pub mod calldata;
 pub mod general;
 pub mod macros;
 pub mod starknet;
 
 pub_struct!(Debug, Clone, Copy, PartialEq, Eq; Address {
-    felt: FieldElement
+    felt: Felt
 });
 
 impl Serialize for Address {
@@ -31,9 +33,9 @@ impl<'de> Deserialize<'de> for Address {
     {
         let s = String::deserialize(deserializer)?;
         let felt = if s.starts_with("0x") {
-            FieldElement::from_hex_be(&s)
+            Felt::from_hex(&s)
         } else {
-            FieldElement::from_dec_str(&s)
+            Felt::from_dec_str(&s)
         }
         .map_err(|e| serde::de::Error::custom(e.to_string()))?;
         Ok(Address { felt })
@@ -54,9 +56,9 @@ impl fmt::Display for Address {
 impl Address {
     pub fn from_str(s: &str) -> Result<Self, String> {
         let felt = if s.starts_with("0x") {
-            FieldElement::from_hex_be(s)
+            Felt::from_hex(s)
         } else {
-            FieldElement::from_dec_str(s)
+            Felt::from_dec_str(s)
         }
         .map_err(|e| e.to_string())?;
 

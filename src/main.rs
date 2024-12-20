@@ -17,14 +17,13 @@ use state::init::AppStateTraitInitializer;
 use state::transactions::TransactionBuilderStateTrait;
 use state::AppState;
 use state::WithState;
-use tokio::time::sleep;
+use std::env;
 use std::io::Read;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
-use std::env;
+use tokio::time::sleep;
 use transactions::build_and_run_multicall;
-use utils::bitcoin_rpc::get_block_hash;
 use utils::general::get_current_timestamp;
 use utils::starknet::check_last_nonce_update_timestamp;
 
@@ -68,21 +67,27 @@ async fn main() {
             match subscriber.recv_msg(0) {
                 Ok(topic) => {
                     if topic.as_str() == Some("rawblock") {
-                        let raw_block_msg = subscriber.recv_msg(0).expect("Failed to receive raw block");
+                        let raw_block_msg =
+                            subscriber.recv_msg(0).expect("Failed to receive raw block");
 
                         // Collect the bytes into a Vec<u8>, handling potential errors
-                        let raw_block_data: Vec<u8> = match raw_block_msg.bytes().collect::<Result<Vec<u8>, _>>() {
-                            Ok(data) => data,
-                            Err(e) => {
-                                zmq_state.logger.info(format!("Failed to collect raw block bytes: {}", e));
-                                return; // Exit the current iteration if there's an error
-                            }
-                        };
+                        let raw_block_data: Vec<u8> =
+                            match raw_block_msg.bytes().collect::<Result<Vec<u8>, _>>() {
+                                Ok(data) => data,
+                                Err(e) => {
+                                    zmq_state
+                                        .logger
+                                        .info(format!("Failed to collect raw block bytes: {}", e));
+                                    return; // Exit the current iteration if there's an error
+                                }
+                            };
 
                         match deserialize::<Block>(&raw_block_data) {
                             Ok(block) => {
                                 let block_hash = block.block_hash();
-                                zmq_state.logger.info(format!("Received block hash: {}", block_hash));
+                                zmq_state
+                                    .logger
+                                    .info(format!("Received block hash: {}", block_hash));
 
                                 zmq_state
                                     .with_blocks(|blocks| {
@@ -99,7 +104,7 @@ async fn main() {
                             }
                         }
                     }
-                    
+
                     // if topic.as_str() == Some("hashblock") {
                     //     let block_hash_msg = subscriber
                     //         .recv_msg(0)

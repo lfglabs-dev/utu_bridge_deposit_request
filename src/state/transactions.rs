@@ -1,9 +1,9 @@
 use std::env;
 
-use starknet::core::types::FieldElement;
+use starknet::core::types::Felt;
 use tokio::sync::RwLock;
 
-use crate::{models::claim::ClaimData, utils::general::get_current_timestamp};
+use crate::{models::claim::ClaimCalldata, utils::general::get_current_timestamp};
 
 use super::TransactionBuilderState;
 
@@ -15,14 +15,14 @@ pub enum TxStatus {
 }
 
 pub trait TransactionBuilderStateTrait {
-    fn init(nonce: FieldElement) -> Self;
+    fn init(nonce: Felt) -> Self;
     async fn get_tx_count(&self) -> usize;
-    async fn add_transaction(&self, tx: ClaimData);
-    async fn empty_transactions_state(&self, amount: usize) -> Vec<ClaimData>;
+    async fn add_transaction(&self, tx: ClaimCalldata);
+    async fn empty_transactions_state(&self, amount: usize) -> Vec<ClaimCalldata>;
 }
 
 impl TransactionBuilderStateTrait for TransactionBuilderState {
-    fn init(nonce: FieldElement) -> Self {
+    fn init(nonce: Felt) -> Self {
         let last_sent_timestamp_ms = get_current_timestamp();
         let max_wait_time_ms = env::var("MAX_WAIT_TIME_MS")
             .expect("MAX_WAIT_TIME_MS must be set")
@@ -51,15 +51,15 @@ impl TransactionBuilderStateTrait for TransactionBuilderState {
         self.with_transactions_read(|txs| txs.len()).await
     }
 
-    async fn add_transaction(&self, tx: ClaimData) {
+    async fn add_transaction(&self, tx: ClaimCalldata) {
         self.with_transactions(|data| {
             data.push(tx);
         })
         .await;
     }
 
-    async fn empty_transactions_state(&self, amount: usize) -> Vec<ClaimData> {
-        let mut res: Vec<ClaimData> = Vec::new();
+    async fn empty_transactions_state(&self, amount: usize) -> Vec<ClaimCalldata> {
+        let mut res: Vec<ClaimCalldata> = Vec::new();
 
         self.with_transactions(|data| {
             for _ in 0..amount {
