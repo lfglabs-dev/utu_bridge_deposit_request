@@ -1,6 +1,9 @@
 use mongodb::{bson::doc, ClientSession, Database};
 
-use crate::models::database::{BlacklistedDepositDocument, DepositAddressDocument};
+use crate::models::{
+    database::{BlacklistedDepositDocument, DepositAddressDocument},
+    runes::SupportedRuneDocument,
+};
 
 use super::DatabaseError;
 
@@ -15,6 +18,10 @@ pub trait DatabaseExt {
         session: &mut ClientSession,
         tx_id: Vec<String>,
     ) -> Result<(), DatabaseError>;
+    async fn get_supported_runes(
+        &self,
+        session: &mut ClientSession,
+    ) -> Result<Vec<SupportedRuneDocument>, DatabaseError>;
 }
 
 impl DatabaseExt for Database {
@@ -52,5 +59,28 @@ impl DatabaseExt for Database {
             .map_err(DatabaseError::QueryFailed)?;
 
         Ok(())
+    }
+
+    async fn get_supported_runes(
+        &self,
+        session: &mut ClientSession,
+    ) -> Result<Vec<SupportedRuneDocument>, DatabaseError> {
+        let mut cursor = self
+            .collection::<SupportedRuneDocument>("runes")
+            .find(doc! {})
+            .session(&mut *session)
+            .await
+            .map_err(DatabaseError::QueryFailed)?;
+
+        let mut res: Vec<SupportedRuneDocument> = Vec::new();
+
+        while let Some(doc_result) = cursor.next(session).await {
+            match doc_result {
+                Ok(doc) => res.push(doc),
+                Err(err) => return Err(DatabaseError::QueryFailed(err)),
+            }
+        }
+
+        Ok(res)
     }
 }

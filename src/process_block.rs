@@ -1,11 +1,10 @@
 use std::{env, str::FromStr, sync::Arc};
 
 use anyhow::Result;
-use bitcoin::{BlockHash, Transaction as BitcoinTransaction, Txid};
+use bitcoin::{BlockHash, Txid};
 use bitcoincore_rpc::RpcApi;
 use reqwest::Client;
 use serde_json::json;
-use starknet::core::types::Felt;
 
 use crate::{
     models::{
@@ -35,14 +34,18 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
+    let supported_runes_array = state.db.get_supported_runes(&mut session).await?;
+    let supported_runes = supported_runes_array
+        .iter()
+        .map(|rune| rune.id.clone())
+        .collect::<Vec<String>>();
+
     let mut offset = 0;
     let mut total = 0;
     loop {
         let url = format!(
             "{}/runes/v1/blocks/{}/activity?offset={}&limit=60",
-            *HIRO_API_URL,
-            block_hash.to_string(),
-            offset
+            *HIRO_API_URL, block_hash, offset
         );
         let client = Client::new();
         let res = client
@@ -56,8 +59,11 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
             total = block_activity.total;
 
             for tx in block_activity.results {
-                if tx.operation == Operation::Send && tx.receiver_address.is_some() {
-                    let receiver_address = tx.receiver_address.clone().unwrap();
+                if tx.operation == Operation::Receive
+                    && tx.address.is_some()
+                    && supported_runes.contains(&tx.rune.id)
+                {
+                    let receiver_address = tx.address.clone().unwrap();
                     if let Ok(starknet_addr) = state
                         .db
                         .is_deposit_addr(&mut session, receiver_address.clone())
@@ -69,7 +75,8 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
                         let payload = json!({
                             "starknet_addr": starknet_addr,
                             "bitcoin_deposit_addr": receiver_address,
-                            "tx_data": tx
+                            "tx_id": tx.location.tx_id,
+                            "tx_vout": tx.location.vout,
                         });
                         let claim_res = client.post(&url).json(&payload).send().await?;
 
