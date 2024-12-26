@@ -1,11 +1,13 @@
 [package]
-name = "utu_api"
+name = "utu_auto_claim"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 starknet = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "093d5ecbbd0929720db38a1ca34d516ccb807398" }
-starknet-core-derive = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "093d5ecbbd0929720db38a1ca34d516ccb807398", features = ["import_from_starknet"] }
+starknet-core-derive = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "093d5ecbbd0929720db38a1ca34d516ccb807398", features = [
+    "import_from_starknet",
+] }
 utu_bridge_deposit_address = { path = "../utu_bridge_deposit_address" }
 axum_auto_routes = { git = "https://github.com/Th0rgal/axum_auto_routes", rev = "ef190613942241f8f93a554cad7d64581a8a0916" }
 axum = { version = "0.6.20", features = ["headers"] }
