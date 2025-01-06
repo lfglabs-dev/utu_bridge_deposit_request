@@ -47,3 +47,20 @@ pub struct Location {
     pub output: Option<String>,
     pub timestamp: u64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuneActivityForAddress {
+    pub limit: u64,
+    pub offset: u64,
+    pub total: u64,
+    pub results: Vec<RuneActivity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuneActivity {
+    pub address: Option<String>,
+    pub receiver_address: Option<String>,
+    pub amount: Option<String>,
+    pub operation: Operation,
+    pub location: Location,
+}
