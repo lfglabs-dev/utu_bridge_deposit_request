@@ -68,8 +68,7 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
                     && supported_runes.contains(&tx.rune.id)
                 {
                     // In results of type Receive we don't have the receiver_address, only the sender_address
-                    // We fetch the transaction details based on tx_id and check the receiver_addresses to ensure
-                    // this transaction is a deposit
+                    // We fetch the transaction details based on tx_id to get the receiver_address
                     let receiver_address = if let Ok(receiver_address) = get_receiver_addr(
                         tx.location.tx_id.clone(),
                         tx.address.clone().unwrap(),
