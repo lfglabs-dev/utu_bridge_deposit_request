@@ -11,6 +11,7 @@ pub mod byte_array;
 pub mod calldata;
 pub mod general;
 pub mod macros;
+pub mod runes;
 pub mod starknet;
 
 pub_struct!(Debug, Clone, Copy, PartialEq, Eq; Address {
