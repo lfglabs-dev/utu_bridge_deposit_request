@@ -66,7 +66,7 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
         }
 
         let block_activity = res.json::<BlockActivity>().await?;
-        total = block_activity.total;
+        total += block_activity.total;
 
         for tx in block_activity.results {
             // As we only need the deposit address to claim the runes on starknet we will check only for Receive operations
