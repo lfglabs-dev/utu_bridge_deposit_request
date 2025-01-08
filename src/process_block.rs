@@ -46,7 +46,6 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
 
     // Fetch block activity
     let mut offset = 0;
-    let mut total = 0;
     loop {
         let url = format!(
             "{}/runes/v1/blocks/{}/activity?offset={}&limit=60",
@@ -66,7 +65,6 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
         }
 
         let block_activity = res.json::<BlockActivity>().await?;
-        total = block_activity.total;
 
         for tx in block_activity.results {
             // As we only need the deposit address to claim the runes on starknet we will check only for Receive operations
@@ -103,7 +101,7 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
         // we fetch 60 txs at a time and a block can have more so
         // we continue fetching until we analyze all txs
         offset += 1;
-        if total <= offset * 60 {
+        if block_activity.total <= offset * 60 {
             break;
         }
     }
