@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::process_block::process_block;
 use crate::server::responses::{ApiResponse, Status};
 use crate::state::AppState;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
 use axum_auto_routes::route;
@@ -31,10 +31,10 @@ lazy_static::lazy_static! {
         .expect("Failed to create HTTP client");
 }
 
-#[route(get, "/process_block")]
+#[route(post, "/process_block")]
 pub async fn process_block_query(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ProcessBlockQuery>,
+    body: Json<ProcessBlockQuery>,
 ) -> impl IntoResponse {
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
@@ -58,7 +58,7 @@ pub async fn process_block_query(
         );
     };
 
-    let block_hash = if let Ok(hash) = BlockHash::from_str(&query.block_hash) {
+    let block_hash = if let Ok(hash) = BlockHash::from_str(&body.block_hash) {
         hash
     } else {
         return (
