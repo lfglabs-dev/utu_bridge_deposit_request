@@ -11,7 +11,7 @@ use crate::server::responses::{ApiResponse, Status};
 use crate::state::database::DatabaseExt;
 use crate::state::AppState;
 use crate::utils::runes::get_supported_runes_vec;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
 use axum_auto_routes::route;
@@ -36,10 +36,10 @@ lazy_static::lazy_static! {
         .expect("Failed to create HTTP client");
 }
 
-#[route(get, "/process_tx")]
+#[route(post, "/process_tx")]
 pub async fn process_tx_query(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ProcessTxQuery>,
+    body: Json<ProcessTxQuery>,
 ) -> impl IntoResponse {
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
@@ -63,14 +63,14 @@ pub async fn process_tx_query(
         );
     };
 
-    if let Err(err) = process_tx(&state, &mut session, query.tx_id.clone()).await {
+    if let Err(err) = process_tx(&state, &mut session, body.tx_id.clone()).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiResponse::new(
                 Status::InternalServerError,
                 format!(
                     "Error while processing transaction {:?}: {:?}",
-                    query.tx_id, err
+                    body.tx_id, err
                 ),
             )),
         );
