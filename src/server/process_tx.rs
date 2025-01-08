@@ -114,9 +114,7 @@ async fn process_tx(
         total = tx_activity.total;
 
         for tx in tx_activity.results {
-            println!("tx: {:?}", tx);
             if is_valid_receive_operation(&tx, &supported_runes) {
-                println!("is_valid_receive_operation");
                 let receiver_address = tx.address.clone().unwrap();
 
                 // Check if the received_address is part of our deposit addresses
@@ -125,14 +123,12 @@ async fn process_tx(
                     .is_deposit_addr(session, receiver_address.clone())
                     .await
                 {
-                    println!("is_deposit_addr");
                     let block_hash = if let Ok(hash) = BlockHash::from_str(&tx.location.block_hash)
                     {
                         hash
                     } else {
                         return Err(anyhow::anyhow!("Invalid block hash"));
                     };
-                    println!("block_hash: {:?}", block_hash);
                     // we process the deposit transaction and add it to queue.
                     if let Err(e) = process_deposit_transaction(
                         state,
