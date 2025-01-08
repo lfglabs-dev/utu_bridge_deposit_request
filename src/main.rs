@@ -3,6 +3,7 @@ mod utils;
 mod logger;
 mod models;
 mod process_block;
+mod server;
 mod state;
 mod transactions;
 use axum::http::StatusCode;
