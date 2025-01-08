@@ -42,7 +42,7 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    let supported_runes = get_supported_runes_vec(&state).await?;
+    let supported_runes = get_supported_runes_vec(state).await?;
 
     // Fetch block activity
     let mut offset = 0;
