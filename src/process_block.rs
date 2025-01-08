@@ -4,17 +4,19 @@ use anyhow::Result;
 use bitcoin::{BlockHash, Txid};
 use bitcoincore_rpc::{json::GetRawTransactionResult, RpcApi};
 use reqwest::Client;
-use serde_json::json;
+use serde_json::{json, Value};
+use starknet::core::types::Felt;
 
 use crate::{
     models::{
-        claim::{ClaimCalldata, ClaimDepositDataRes},
+        claim::{ClaimCalldata, ClaimData, Signature},
         hiro::{BlockActivity, BlockActivityResult, Operation},
     },
     state::{database::DatabaseExt, transactions::TransactionBuilderStateTrait, AppState},
     utils::{
         calldata::{get_transaction_struct_felt, hex_to_hash_rev},
         runes::get_supported_runes_vec,
+        Address,
     },
 };
 
@@ -134,14 +136,22 @@ pub async fn process_deposit_transaction(
     starknet_addr: &String,
     block_hash: &BlockHash,
 ) -> Result<()> {
-    let claim_data = fetch_claim_data(tx, receiver_addr, starknet_addr).await?;
+    let claim_data = match fetch_claim_data(tx, receiver_addr, starknet_addr).await {
+        Ok(claim_data) => claim_data,
+        Err(err) => {
+            return Err(anyhow::anyhow!(format!(
+                "Failed to fetch claim data : {:?}",
+                err
+            )))
+        }
+    };
 
     // Retrieve the complete transaction from bitcoin RPC
     // We need it to build the starknet transaction.
     match fetch_bitcoin_transaction_info(state, &tx.location.tx_id, block_hash) {
         Ok(tx_info) => {
             let transaction_struct = get_transaction_struct_felt(&state.bitcoin_provider, tx_info);
-            let tx_id = match Txid::from_str(&claim_data.data.tx_id) {
+            let tx_id = match Txid::from_str(&claim_data.tx_id) {
                 Ok(tx_id) => Some(tx_id),
                 Err(_) => None,
             };
@@ -149,12 +159,12 @@ pub async fn process_deposit_transaction(
             state
                 .transactions
                 .add_transaction(ClaimCalldata {
-                    rune_id: claim_data.data.rune_id,
-                    amount: claim_data.data.amount,
-                    target_addr: claim_data.data.target_addr,
-                    sig: claim_data.data.sig,
+                    rune_id: claim_data.rune_id,
+                    amount: claim_data.amount,
+                    target_addr: claim_data.target_addr,
+                    sig: claim_data.sig,
                     tx_id: hex_to_hash_rev(tx_id),
-                    tx_id_str: claim_data.data.tx_id,
+                    tx_id_str: claim_data.tx_id,
                     transaction_struct,
                 })
                 .await;
@@ -174,18 +184,38 @@ async fn fetch_claim_data(
     tx: &BlockActivityResult,
     receiver_address: &String,
     starknet_addr: &String,
-) -> Result<ClaimDepositDataRes> {
+) -> Result<ClaimData> {
     let url = format!("{}/claim_deposit_data", *UTU_API_URL);
     let payload = json!({
         "starknet_addr": starknet_addr,
-        "bitcoin_deposit_addr": receiver_address,
         "tx_id": tx.location.tx_id,
         "tx_vout": tx.location.vout,
     });
     let claim_res = HTTP_CLIENT.post(&url).json(&payload).send().await?;
     if claim_res.status().is_success() {
-        let claim_data = claim_res.json::<ClaimDepositDataRes>().await?;
-        Ok(claim_data)
+        // let claim_data = claim_res.json::<ClaimDepositDataRes>().await?;
+        let claim_data_value = claim_res.json::<Value>().await?;
+
+        // Extract fields manually because deserialization directly to Felt is failing.
+        let claim_data = claim_data_value["data"].as_object().unwrap();
+        let rune_id = Felt::from_dec_str(claim_data["rune_id"].as_str().unwrap())?;
+        let amount = (
+            Felt::from_dec_str(claim_data["amount"][0].as_str().unwrap())?,
+            Felt::from_dec_str(claim_data["amount"][1].as_str().unwrap())?,
+        );
+        let target_addr = Felt::from_hex(claim_data["target_addr"].as_str().unwrap())?;
+        let tx_id = claim_data["tx_id"].as_str().unwrap().to_string();
+        let sig = Signature {
+            r: Felt::from_dec_str(claim_data["sig"]["r"].as_str().unwrap())?,
+            s: Felt::from_dec_str(claim_data["sig"]["s"].as_str().unwrap())?,
+        };
+        Ok(ClaimData {
+            rune_id,
+            amount,
+            target_addr: Address { felt: target_addr },
+            tx_id,
+            sig,
+        })
     } else {
         Err(anyhow::anyhow!(
             "Failed to retrieve claim data for deposit address: {} with error: {:?}",
