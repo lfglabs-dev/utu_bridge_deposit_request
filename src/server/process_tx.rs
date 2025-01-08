@@ -111,7 +111,7 @@ async fn process_tx(
         }
 
         let tx_activity = res.json::<BlockActivity>().await?;
-        total = tx_activity.total;
+        total += tx_activity.total;
 
         for tx in tx_activity.results {
             if is_valid_receive_operation(&tx, &supported_runes) {
