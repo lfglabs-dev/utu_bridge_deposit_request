@@ -21,7 +21,7 @@ RUN if [ "$CONTAINER_ENV" = "prod" ]; then \
         cargo build; \
     fi
 
-EXPOSE 8080
+EXPOSE 8082
 
 ENV RUST_BACKTRACE=1
 
