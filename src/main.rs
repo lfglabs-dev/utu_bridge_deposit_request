@@ -7,6 +7,8 @@ mod server;
 mod state;
 mod transactions;
 use axum::http::StatusCode;
+use axum::Extension;
+use axum::Router;
 use axum_auto_routes::route;
 use bitcoin::consensus::deserialize;
 use bitcoin::Block;
@@ -20,10 +22,13 @@ use state::AppState;
 use state::WithState;
 use std::env;
 use std::io::Read;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 use tokio::time::sleep;
+use tower_http::cors;
+use tower_http::cors::CorsLayer;
 use transactions::build_and_run_multicall;
 use utils::general::get_current_timestamp;
 use utils::starknet::check_last_nonce_update_timestamp;
@@ -39,6 +44,42 @@ async fn main() {
     shared_state
         .logger
         .async_info("starting utu bridge_auto_claim")
+        .await;
+
+    // setup http server
+    let cors = CorsLayer::new()
+        .allow_headers(cors::Any)
+        .allow_origin(cors::Any);
+    let app = ROUTE_REGISTRY
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .fold(Router::new(), |acc, r| {
+            acc.merge(r.to_router(shared_state.clone()))
+        })
+        .layer(cors)
+        .layer(Extension(shared_state.clone()));
+
+    let server_port = env::var("SERVER_PORT")
+        .expect("SERVER_PORT must be set")
+        .parse::<u16>()
+        .expect("invalid SERVER_PORT format");
+    let addr = SocketAddr::from(([0, 0, 0, 0], server_port));
+
+    // spawn the server task
+    let server_task = tokio::spawn(async move {
+        axum::Server::bind(&addr)
+            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+            .await
+            .unwrap();
+    });
+    shared_state
+        .logger
+        .async_info(format!(
+            "server: listening on http://0.0.0.0:{}",
+            server_port
+        ))
         .await;
 
     // Spawn a task to listen for ZMQ messages and add blocks into state
@@ -218,6 +259,7 @@ async fn main() {
 
     // wait for both the zqm task, block_task to stop the program
     tokio::select! {
+        _ = server_task => {},
         _ = zmq_task => {},
         _ = block_task => {},
         _ = tx_task => {},
