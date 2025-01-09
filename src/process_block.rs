@@ -52,7 +52,6 @@ pub async fn process_block(
 
     // Fetch block activity
     let mut offset = 0;
-    let mut total = 0;
     loop {
         let url = format!(
             "{}/runes/v1/blocks/{}/activity?offset={}&limit=60",
@@ -73,11 +72,11 @@ pub async fn process_block(
         }
 
         let block_activity = res.json::<BlockActivity>().await?;
+
         if block_activity.total == 0 {
             // block wasn't indexed yet by hiro, so we refetch it until we have a result
             continue;
         }
-        total = block_activity.total;
 
         for tx in block_activity.results {
             // As we only need the deposit address to claim the runes on starknet we will check only for Receive operations
@@ -115,7 +114,7 @@ pub async fn process_block(
         // we continue fetching until we analyze all txs
         // we have to ensure total is not equal to 0 as Hiro takes a bit of time to index the block.
         offset += 1;
-        if total <= offset * 60 {
+        if block_activity.total <= offset * 60 {
             break;
         }
     }

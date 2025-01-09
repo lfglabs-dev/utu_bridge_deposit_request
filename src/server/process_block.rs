@@ -38,28 +38,6 @@ pub async fn process_block_query(
     State(state): State<Arc<AppState>>,
     body: Json<ProcessBlockQuery>,
 ) -> impl IntoResponse {
-    let mut session = match state.db.client().start_session().await {
-        Ok(session) => session,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::new(
-                    Status::InternalServerError,
-                    "Database error: unable to start session",
-                )),
-            );
-        }
-    };
-    if let Err(err) = session.start_transaction().await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::new(
-                Status::InternalServerError,
-                format!("Database error: {:?}", err),
-            )),
-        );
-    };
-
     let block_hash = if let Ok(hash) = BlockHash::from_str(&body.block_hash) {
         hash
     } else {
@@ -69,7 +47,7 @@ pub async fn process_block_query(
         );
     };
 
-    let block_height = match state.bitcoin_provider.call::<BlockWithTransactions>(
+  let block_height = match state.bitcoin_provider.call::<BlockWithTransactions>(
         "getblock",
         &[serde_json::to_value(block_hash).unwrap(), 2.into()],
     ) {
@@ -90,13 +68,8 @@ pub async fn process_block_query(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiResponse::new(
                 Status::InternalServerError,
-                format!("Error while processing block: {:?}", e),
+                format!("Error while processing block: {:?}", err),
             )),
-        );
+        ),
     }
-
-    (
-        StatusCode::ACCEPTED,
-        Json(ApiResponse::new(Status::Success, true)),
-    )
 }
