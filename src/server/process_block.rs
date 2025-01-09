@@ -47,7 +47,7 @@ pub async fn process_block_query(
         );
     };
 
-  let block_height = match state.bitcoin_provider.call::<BlockWithTransactions>(
+    let block_height = match state.bitcoin_provider.call::<BlockWithTransactions>(
         "getblock",
         &[serde_json::to_value(block_hash).unwrap(), 2.into()],
     ) {
@@ -68,8 +68,13 @@ pub async fn process_block_query(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiResponse::new(
                 Status::InternalServerError,
-                format!("Error while processing block: {:?}", err),
+                format!("Error while processing block: {:?}", e),
             )),
-        ),
+        );
     }
+
+    (
+        StatusCode::ACCEPTED,
+        Json(ApiResponse::new(Status::Success, true)),
+    )
 }
