@@ -113,7 +113,6 @@ pub async fn process_block(
 
         // we fetch 60 txs at a time and a block can have more so
         // we continue fetching until we analyze all txs
-        // we have to ensure total is not equal to 0 as Hiro takes a bit of time to index the block.
         offset += 1;
         if total <= offset * 60 {
             break;
