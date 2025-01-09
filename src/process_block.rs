@@ -31,7 +31,11 @@ lazy_static::lazy_static! {
         .expect("Failed to create HTTP client");
 }
 
-pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Result<()> {
+pub async fn process_block(
+    state: &Arc<AppState>,
+    block_hash: BlockHash,
+    block_height: u64,
+) -> Result<()> {
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
         Err(_) => {
@@ -44,7 +48,7 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    let supported_runes = get_supported_runes_vec(&state).await?;
+    let supported_runes = get_supported_runes_vec(state).await?;
 
     // Fetch block activity
     let mut offset = 0;
@@ -52,7 +56,7 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
     loop {
         let url = format!(
             "{}/runes/v1/blocks/{}/activity?offset={}&limit=60",
-            *HIRO_API_URL, block_hash, offset
+            *HIRO_API_URL, block_height, offset
         );
         let res = HTTP_CLIENT
             .get(url)
@@ -61,13 +65,18 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
             .await?;
 
         if !res.status().is_success() {
-            state
-                .logger
-                .warning(format!("Failed to get activity for block: {}", block_hash));
+            state.logger.warning(format!(
+                "Failed to get activity for block_height: {}",
+                block_height
+            ));
             continue;
         }
 
         let block_activity = res.json::<BlockActivity>().await?;
+        if block_activity.total == 0 {
+            // block wasn't indexed yet by hiro, so we refetch it until we have a result
+            continue;
+        }
         total = block_activity.total;
 
         for tx in block_activity.results {
@@ -104,6 +113,7 @@ pub async fn process_block(state: &Arc<AppState>, block_hash: BlockHash) -> Resu
 
         // we fetch 60 txs at a time and a block can have more so
         // we continue fetching until we analyze all txs
+        // we have to ensure total is not equal to 0 as Hiro takes a bit of time to index the block.
         offset += 1;
         if total <= offset * 60 {
             break;

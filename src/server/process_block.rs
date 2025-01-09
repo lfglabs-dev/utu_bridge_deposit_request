@@ -3,6 +3,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::models::blocks::BlockWithTransactions;
 use crate::process_block::process_block;
 use crate::server::responses::{ApiResponse, Status};
 use crate::state::AppState;
@@ -11,6 +12,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 use axum_auto_routes::route;
 use bitcoin::BlockHash;
+use bitcoincore_rpc::RpcApi;
 use mongodb::bson::doc;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -67,7 +69,23 @@ pub async fn process_block_query(
         );
     };
 
-    if let Err(e) = process_block(&state, block_hash).await {
+    let block_height = match state.bitcoin_provider.call::<BlockWithTransactions>(
+        "getblock",
+        &[serde_json::to_value(block_hash).unwrap(), 2.into()],
+    ) {
+        Ok(block) => block.height,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::new(
+                    Status::InternalServerError,
+                    format!("Error while fetching block height: {:?}", e),
+                )),
+            );
+        }
+    };
+
+    if let Err(e) = process_block(&state, block_hash, block_height).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiResponse::new(
