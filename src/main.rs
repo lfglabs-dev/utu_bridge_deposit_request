@@ -202,8 +202,12 @@ async fn main() {
                                 block_state
                                     .logger
                                     .info(format!("Processing block: {}", block_hash));
-                                if let Err(e) =
-                                    process_block::process_block(&block_state, block_hash).await
+                                if let Err(e) = process_block::process_block(
+                                    &block_state,
+                                    block_hash,
+                                    block.height,
+                                )
+                                .await
                                 {
                                     block_state
                                         .logger
