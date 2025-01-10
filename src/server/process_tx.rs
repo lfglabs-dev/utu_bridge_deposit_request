@@ -91,7 +91,6 @@ async fn process_tx(
 
     // Fetch transaction details and parse all activities
     let mut offset = 0;
-    let mut total = 0;
     loop {
         let url = format!(
             "{}/runes/v1/transactions/{}/activity?offset={}&limit=60",
@@ -111,7 +110,6 @@ async fn process_tx(
         }
 
         let tx_activity = res.json::<BlockActivity>().await?;
-        total = tx_activity.total;
 
         for tx in tx_activity.results {
             if is_valid_receive_operation(&tx, &supported_runes) {
@@ -158,7 +156,7 @@ async fn process_tx(
         // we fetch 60 activities at a time and a tx could have more so
         // we continue fetching until we analyze all activities in tx
         offset += 1;
-        if total <= offset * 60 {
+        if tx_activity.total <= offset * 60 {
             break;
         }
     }
