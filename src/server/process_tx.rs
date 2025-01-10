@@ -143,6 +143,13 @@ async fn process_tx(
                             "Failed to process deposit transaction for tx_id: {}: {:?}",
                             tx.location.tx_id, e
                         ));
+                        return Err(e);
+                    } else {
+                        state.logger.info(format!(
+                            "Processed deposit transaction for tx_id: {}",
+                            tx.location.tx_id
+                        ));
+                        return Ok(());
                     }
                 }
             }
@@ -156,5 +163,5 @@ async fn process_tx(
         }
     }
 
-    Ok(())
+    Err(anyhow::anyhow!("Failed to process transaction. Unable to find a matching deposit."))
 }
