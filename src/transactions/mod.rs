@@ -114,8 +114,7 @@ pub async fn _execute_multicall_common(
 ) -> Result<Felt> {
     let execution = state
         .starknet_account
-        .execute(calls)
-        .fee_estimate_multiplier(5.0f64);
+        .execute_v1(calls);
     match execution.estimate_fee().await {
         Ok(_) => match execution
             .nonce(nonce)
@@ -136,7 +135,7 @@ pub async fn _execute_multicall_common(
             }
             Err(e) => {
                 let error_message = format!(
-                    "Process {}: An error occurred while executing multicall: {}",
+                    "Process {}: An error occurred while executing multicall: {:?}",
                     nonce, e
                 );
                 Err(anyhow::anyhow!(error_message))
@@ -144,7 +143,7 @@ pub async fn _execute_multicall_common(
         },
         Err(e) => {
             let error_message = format!(
-                "Process {}: An error occurred while simulating multicall: {}",
+                "Process {}: An error occurred while simulating multicall: {:?}",
                 nonce, e
             );
 
