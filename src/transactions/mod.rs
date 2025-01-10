@@ -21,8 +21,6 @@ use crate::{
 pub async fn build_and_run_multicall(state: &Arc<AppState>, transactions: Vec<ClaimCalldata>) {
     // Prepare the multicall
     let (execute_calls, tx_ids) = prepare_multicall(state, transactions).await;
-    println!("execute_calls: {:?}", execute_calls);
-    println!("tx_ids: {:?}", tx_ids);
 
     if execute_calls.is_empty() {
         state
