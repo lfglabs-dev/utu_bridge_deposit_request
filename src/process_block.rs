@@ -105,6 +105,13 @@ pub async fn process_block(
                             "Failed to process deposit transaction for tx_id: {}: {:?}",
                             tx.location.tx_id, e
                         ));
+                        return Err(e);
+                    } else {
+                        state.logger.info(format!(
+                            "Processed deposit transaction for tx_id: {}",
+                            tx.location.tx_id
+                        ));
+                        return Ok(());
                     }
                 }
             }
@@ -126,7 +133,9 @@ pub async fn process_block(
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    Ok(())
+    Err(anyhow::anyhow!(
+        "Failed to process transaction. Unable to find a matching deposits in block."
+    ))
 }
 
 /// Determines if the transaction is a valid Receive operation.

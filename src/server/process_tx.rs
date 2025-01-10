@@ -161,5 +161,7 @@ async fn process_tx(
         }
     }
 
-    Err(anyhow::anyhow!("Failed to process transaction. Unable to find a matching deposit."))
+    Err(anyhow::anyhow!(
+        "Failed to process transaction. Unable to find a matching deposit."
+    ))
 }
