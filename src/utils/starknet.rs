@@ -129,3 +129,35 @@ pub fn to_uint256(n: BigInt) -> (Felt, Felt) {
         Felt::from_bytes_be_slice(&high_bytes),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn symbol_as_felt(symbol: String) -> Felt {
+        let bytes = symbol.as_bytes();
+        let mut rune_id_felt: u128 = 0;
+        let mut shift_amount: u128 = 1;
+
+        for &byte in bytes.iter() {
+            rune_id_felt += (byte as u128) * shift_amount;
+            shift_amount *= 256;
+        }
+
+        Felt::from(rune_id_felt)
+    }
+
+    #[test]
+    fn test_compute_rune_contract() {
+        let symbol = "🐕";
+        let symbol_felt = symbol_as_felt(symbol.to_string());
+        let expected_symbol = Felt::from_dec_str("2509283312").unwrap();
+        assert_eq!(symbol_felt, expected_symbol);
+
+        let expected_contract_addr =
+            Felt::from_hex("0x01c8C5847aE848Eabf909515338e74DADBC724f54C7735851c57eCfdF1319143")
+                .unwrap();
+        let computed_contract_addr = compute_rune_contract(symbol_felt);
+        assert_eq!(computed_contract_addr, expected_contract_addr);
+    }
+}
