@@ -105,6 +105,13 @@ pub async fn process_block(
                             "Failed to process deposit transaction for tx_id: {}: {:?}",
                             tx.location.tx_id, e
                         ));
+                        return Err(e);
+                    } else {
+                        state.logger.info(format!(
+                            "Processed deposit transaction for tx_id: {}",
+                            tx.location.tx_id
+                        ));
+                        return Ok(());
                     }
                 }
             }
@@ -112,7 +119,6 @@ pub async fn process_block(
 
         // we fetch 60 txs at a time and a block can have more so
         // we continue fetching until we analyze all txs
-        // we have to ensure total is not equal to 0 as Hiro takes a bit of time to index the block.
         offset += 1;
         if block_activity.total <= offset * 60 {
             break;
@@ -127,7 +133,9 @@ pub async fn process_block(
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    Ok(())
+    Err(anyhow::anyhow!(
+        "Failed to process transaction. Unable to find a matching deposits in block."
+    ))
 }
 
 /// Determines if the transaction is a valid Receive operation.
