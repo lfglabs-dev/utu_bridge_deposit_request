@@ -112,9 +112,7 @@ pub async fn _execute_multicall_common(
     calls: Vec<Call>,
     nonce: Felt,
 ) -> Result<Felt> {
-    let execution = state
-        .starknet_account
-        .execute_v1(calls);
+    let execution = state.starknet_account.execute_v1(calls);
     match execution.estimate_fee().await {
         Ok(_) => match execution
             .nonce(nonce)

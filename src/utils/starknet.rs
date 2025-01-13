@@ -61,6 +61,7 @@ pub async fn prepare_multicall(
                 transaction.target_addr.felt,
             ];
             calldata.extend(transaction.tx_id.iter());
+            calldata.push(transaction.tx_vout);
             calldata.push(transaction.sig.r);
             calldata.push(transaction.sig.s);
             calldata.extend(transaction.transaction_struct.iter());
