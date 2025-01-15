@@ -120,7 +120,7 @@ pub async fn process_block(
         // we fetch 60 txs at a time and a block can have more so
         // we continue fetching until we analyze all txs
         offset += 1;
-        if block_activity.total <= offset * 60 {
+        if offset == block_activity.total {
             break;
         }
     }
@@ -182,6 +182,7 @@ pub async fn process_deposit_transaction(
                     sig: claim_data.sig,
                     tx_id: hex_to_hash_rev(tx_id),
                     tx_id_str: claim_data.tx_id,
+                    tx_vout: Felt::from(claim_data.tx_vout),
                     transaction_struct,
                 })
                 .await;
@@ -222,6 +223,11 @@ async fn fetch_claim_data(
         );
         let target_addr = Felt::from_hex(claim_data["target_addr"].as_str().unwrap())?;
         let tx_id = claim_data["tx_id"].as_str().unwrap().to_string();
+        let tx_vout = claim_data["tx_vout"]
+            .as_u64()
+            .expect("tx_vout is not a valid number")
+            .try_into()
+            .expect("tx_vout cannot be converted to u32");
         let sig = Signature {
             r: Felt::from_dec_str(claim_data["sig"]["r"].as_str().unwrap())?,
             s: Felt::from_dec_str(claim_data["sig"]["s"].as_str().unwrap())?,
@@ -231,6 +237,7 @@ async fn fetch_claim_data(
             amount,
             target_addr: Address { felt: target_addr },
             tx_id,
+            tx_vout,
             sig,
         })
     } else {

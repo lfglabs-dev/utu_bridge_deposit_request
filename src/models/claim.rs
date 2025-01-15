@@ -21,6 +21,7 @@ pub struct ClaimData {
     pub amount: (Felt, Felt),
     pub target_addr: Address,
     pub tx_id: String,
+    pub tx_vout: u32,
     pub sig: Signature,
 }
 
@@ -31,6 +32,7 @@ pub struct ClaimCalldata {
     pub target_addr: Address,
     pub tx_id: Vec<Felt>,
     pub tx_id_str: String,
+    pub tx_vout: Felt,
     pub sig: Signature,
     pub transaction_struct: Vec<Felt>,
 }
