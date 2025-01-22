@@ -162,7 +162,7 @@ async fn process_tx(
             break;
         }
 
-        // we sleep for HIRO_TIMEOUT_MS to avoid rate limiting
+        // we sleep for HIRO_TIMEOUT_MS to avoid rate limit
         sleep(Duration::from_millis(*HIRO_TIMEOUT_MS)).await;
     }
 
