@@ -6,6 +6,7 @@ use bitcoincore_rpc::{json::GetRawTransactionResult, RpcApi};
 use reqwest::Client;
 use serde_json::{json, Value};
 use starknet::core::types::Felt;
+use tokio::time::sleep;
 
 use crate::{
     models::{
@@ -24,6 +25,7 @@ lazy_static::lazy_static! {
     static ref HIRO_API_URL: String = env::var("HIRO_API_URL").expect("HIRO_API_URL must be set");
     static ref HIRO_API_KEY: String = env::var("HIRO_API_KEY").expect("HIRO_API_KEY must be set");
     static ref UTU_API_URL: String = env::var("UTU_API_URL").expect("UTU_API_URL must be set");
+    static ref HIRO_TIMEOUT_MS: u64 = env::var("HIRO_TIMEOUT_MS").expect("HIRO_TIMEOUT_MS must be set").parse::<u64>().expect("HIRO_TIMEOUT_MS must be a valid u64");
     static ref HTTP_CLIENT: Client = Client::builder()
         .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(10)
@@ -52,6 +54,7 @@ pub async fn process_block(
 
     // Fetch block activity
     let mut offset = 0;
+    let mut tx_found = false;
     loop {
         let url = format!(
             "{}/runes/v1/blocks/{}/activity?offset={}&limit=60",
@@ -65,8 +68,8 @@ pub async fn process_block(
 
         if !res.status().is_success() {
             state.logger.warning(format!(
-                "Failed to get activity for block_height: {}",
-                block_height
+                "Failed to get activity for block_height: {} and block_hash: {} at offset: {}",
+                block_height, block_hash, offset
             ));
             continue;
         }
@@ -105,13 +108,12 @@ pub async fn process_block(
                             "Failed to process deposit transaction for tx_id: {}: {:?}",
                             tx.location.tx_id, e
                         ));
-                        return Err(e);
                     } else {
                         state.logger.info(format!(
                             "Processed deposit transaction for tx_id: {}",
                             tx.location.tx_id
                         ));
-                        return Ok(());
+                        tx_found = true;
                     }
                 }
             }
@@ -123,6 +125,9 @@ pub async fn process_block(
         if offset == block_activity.total {
             break;
         }
+
+        // we sleep for HIRO_TIMEOUT_MS to avoid rate limit
+        sleep(Duration::from_millis(*HIRO_TIMEOUT_MS)).await;
     }
 
     state
@@ -133,9 +138,13 @@ pub async fn process_block(
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    Err(anyhow::anyhow!(
-        "Failed to process transaction. Unable to find a matching deposits in block."
-    ))
+    if tx_found {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Failed to process block. Unable to find any matching deposits in block."
+        ))
+    }
 }
 
 /// Determines if the transaction is a valid Receive operation.
