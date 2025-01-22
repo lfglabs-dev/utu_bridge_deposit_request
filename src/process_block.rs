@@ -88,6 +88,14 @@ pub async fn process_block(
             if is_valid_receive_operation(&tx, &supported_runes) {
                 let receiver_address = tx.address.clone().unwrap();
 
+                if state.blacklisted_deposit_addr.contains(&receiver_address) {
+                    state.logger.info(format!(
+                        "Skipping blacklisted deposit address: {}",
+                        receiver_address
+                    ));
+                    continue;
+                }
+
                 // Check if the received_address is part of our deposit addresses
                 if let Ok(starknet_addr) = state
                     .db

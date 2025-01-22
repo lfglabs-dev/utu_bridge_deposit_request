@@ -60,6 +60,19 @@ impl AppStateTraitInitializer for AppState {
             .await
             .expect("Unable to fetch nonce from account");
 
+        // Load blacklisted addresses
+        let blacklisted_deposit_addr_len = env::var("BLACKLISTED_DEPOSIT_ADDR_LEN")
+            .expect("BLACKLISTED_DEPOSIT_ADDR_LEN must be set")
+            .parse::<u64>()
+            .expect("BLACKLISTED_DEPOSIT_ADDR_LEN must be a valid u64");
+        let mut blacklisted_deposit_addr: Vec<String> = Vec::new();
+        for i in 0..blacklisted_deposit_addr_len {
+            blacklisted_deposit_addr.push(
+                env::var(format!("BLACKLISTED_DEPOSIT_ADDR_{}", i))
+                    .unwrap_or_else(|_| panic!("BLACKLISTED_DEPOSIT_ADDR_{} must be set", i)),
+            );
+        }
+
         Arc::new_cyclic(|_| AppState {
             logger,
             db,
@@ -69,6 +82,7 @@ impl AppStateTraitInitializer for AppState {
             blocks: RwLock::new(<BlocksState>::init()),
             transactions: <TransactionBuilderState>::init(nonce),
             notifier: Notify::new(),
+            blacklisted_deposit_addr,
         })
     }
 }

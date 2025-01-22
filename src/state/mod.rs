@@ -47,6 +47,7 @@ pub struct AppState {
     pub blocks: RwLock<BlocksState>,
     pub transactions: TransactionBuilderState,
     pub notifier: Notify,
+    pub blacklisted_deposit_addr: Vec<String>,
 }
 
 pub struct BlocksState {
