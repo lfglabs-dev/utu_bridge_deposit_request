@@ -54,6 +54,7 @@ pub async fn process_block(
 
     // Fetch block activity
     let mut offset = 0;
+    let mut tx_found = false;
     loop {
         let url = format!(
             "{}/runes/v1/blocks/{}/activity?offset={}&limit=60",
@@ -67,8 +68,8 @@ pub async fn process_block(
 
         if !res.status().is_success() {
             state.logger.warning(format!(
-                "Failed to get activity for block_height: {}",
-                block_height
+                "Failed to get activity for block_height: {} and block_hash: {} at offset: {}",
+                block_height, block_hash, offset
             ));
             continue;
         }
@@ -107,13 +108,12 @@ pub async fn process_block(
                             "Failed to process deposit transaction for tx_id: {}: {:?}",
                             tx.location.tx_id, e
                         ));
-                        return Err(e);
                     } else {
                         state.logger.info(format!(
                             "Processed deposit transaction for tx_id: {}",
                             tx.location.tx_id
                         ));
-                        return Ok(());
+                        tx_found = true;
                     }
                 }
             }
@@ -138,9 +138,13 @@ pub async fn process_block(
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    Err(anyhow::anyhow!(
-        "Failed to process transaction. Unable to find a matching deposits in block."
-    ))
+    if tx_found {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Failed to process block. Unable to find any matching deposits in block."
+        ))
+    }
 }
 
 /// Determines if the transaction is a valid Receive operation.
