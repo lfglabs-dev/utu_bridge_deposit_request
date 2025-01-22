@@ -4,6 +4,7 @@ use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::sleep;
 
 use crate::models::hiro::BlockActivity;
 use crate::process_block::{is_valid_receive_operation, process_deposit_transaction};
@@ -29,6 +30,7 @@ lazy_static::lazy_static! {
     static ref HIRO_API_URL: String = env::var("HIRO_API_URL").expect("HIRO_API_URL must be set");
     static ref HIRO_API_KEY: String = env::var("HIRO_API_KEY").expect("HIRO_API_KEY must be set");
     static ref UTU_API_URL: String = env::var("UTU_API_URL").expect("UTU_API_URL must be set");
+    static ref HIRO_TIMEOUT_MS: u64 = env::var("HIRO_TIMEOUT_MS").expect("HIRO_TIMEOUT_MS must be set").parse::<u64>().expect("HIRO_TIMEOUT_MS must be a valid u64");
     static ref HTTP_CLIENT: Client = Client::builder()
         .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(10)
@@ -159,6 +161,9 @@ async fn process_tx(
         if tx_activity.total <= offset * 60 {
             break;
         }
+
+        // we sleep for HIRO_TIMEOUT_MS to avoid rate limiting
+        sleep(Duration::from_millis(*HIRO_TIMEOUT_MS)).await;
     }
 
     Err(anyhow::anyhow!(
