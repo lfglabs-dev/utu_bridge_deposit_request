@@ -22,7 +22,7 @@ pub struct ClaimData {
     pub target_addr: Address,
     pub tx_id: String,
     pub tx_vout: u32,
-    pub sig: Signature,
+    pub hashed_value: Felt,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +33,19 @@ pub struct ClaimCalldata {
     pub tx_id: Vec<Felt>,
     pub tx_id_str: String,
     pub tx_vout: Felt,
-    pub sig: Signature,
+    pub hashed_value: Felt,
     pub transaction_struct: Vec<Felt>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FordefiDepositData {
+    pub rune_id: Felt,
+    pub amount: (Felt, Felt),
+    pub target_addr: Address,
+    pub tx_id: Vec<Felt>,
+    pub tx_id_str: String,
+    pub tx_vout: Felt,
+    pub hashed_value: Felt,
+    pub transaction_struct: Vec<Felt>,
+    pub rune_contract: Felt,
 }

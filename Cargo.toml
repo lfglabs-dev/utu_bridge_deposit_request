@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-starknet = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "093d5ecbbd0929720db38a1ca34d516ccb807398" }
-starknet-core-derive = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "093d5ecbbd0929720db38a1ca34d516ccb807398", features = [
+starknet = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "171b0c65cac407ee33972e0ab2c3f8744c083753" }
+starknet-crypto = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "171b0c65cac407ee33972e0ab2c3f8744c083753" }
+starknet-core-derive = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "171b0c65cac407ee33972e0ab2c3f8744c083753", features = [
     "import_from_starknet",
 ] }
-utu_bridge_deposit_address = { git = "https://github.com/lfglabs-dev/utu_bridge_deposit_address", rev = "be5e1e5bf9df0baf241da01b98a31d4416bd970e" }
+utu_bridge_deposit_address = { git = "https://github.com/lfglabs-dev/utu_bridge_deposit_address", branch = "chore/starkner-rs-version" }
 axum_auto_routes = { git = "https://github.com/Th0rgal/axum_auto_routes", rev = "ef190613942241f8f93a554cad7d64581a8a0916" }
 axum = { version = "0.6.20", features = ["headers"] }
 toml = "0.5.10"
@@ -34,3 +35,6 @@ bigdecimal = "0.4.6"
 num-integer = "0.1.46"
 bitcoin = "0.32.4"
 paste = "1.0.15"
+p256 = { version = "0.12.0", features = ["pem"] }
+base64 = "0.22.1"
+indexmap = "2.7.0"

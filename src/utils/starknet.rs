@@ -62,8 +62,9 @@ pub async fn prepare_multicall(
             ];
             calldata.extend(transaction.tx_id.iter());
             calldata.push(transaction.tx_vout);
-            calldata.push(transaction.sig.r);
-            calldata.push(transaction.sig.s);
+            // todo: put the sig we get from fordefi instead
+            // calldata.push(transaction.sig.r);
+            // calldata.push(transaction.sig.s);
             calldata.extend(transaction.transaction_struct.iter());
 
             calls.push(Call {

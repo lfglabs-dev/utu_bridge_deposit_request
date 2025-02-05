@@ -9,6 +9,7 @@ pub mod bitcoin_rpc;
 pub mod blacklist;
 pub mod byte_array;
 pub mod calldata;
+pub mod fordefi;
 pub mod general;
 pub mod macros;
 pub mod runes;

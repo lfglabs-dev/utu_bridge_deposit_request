@@ -10,13 +10,15 @@ use tokio::time::sleep;
 
 use crate::{
     models::{
-        claim::{ClaimCalldata, ClaimData, Signature},
+        claim::{ClaimData, FordefiDepositData},
         hiro::{BlockActivity, BlockActivityResult, Operation},
     },
-    state::{database::DatabaseExt, transactions::TransactionBuilderStateTrait, AppState},
+    state::{database::DatabaseExt, AppState},
     utils::{
         calldata::{get_transaction_struct_felt, hex_to_hash_rev},
+        fordefi::send_fordefi_request,
         runes::get_supported_runes_vec,
+        starknet::compute_rune_contract,
         Address,
     },
 };
@@ -189,20 +191,28 @@ pub async fn process_deposit_transaction(
                 Ok(tx_id) => Some(tx_id),
                 Err(_) => None,
             };
-            // Add claim runes transaction to the queue
-            state
-                .transactions
-                .add_transaction(ClaimCalldata {
-                    rune_id: claim_data.rune_id,
-                    amount: claim_data.amount,
-                    target_addr: claim_data.target_addr,
-                    sig: claim_data.sig,
-                    tx_id: hex_to_hash_rev(tx_id),
-                    tx_id_str: claim_data.tx_id,
-                    tx_vout: Felt::from(claim_data.tx_vout),
-                    transaction_struct,
-                })
-                .await;
+
+            // we send the deposit request to fordefi
+            let deposit_data = FordefiDepositData {
+                rune_id: claim_data.rune_id,
+                amount: claim_data.amount,
+                target_addr: claim_data.target_addr,
+                hashed_value: claim_data.hashed_value,
+                tx_id: hex_to_hash_rev(tx_id),
+                tx_id_str: claim_data.tx_id,
+                tx_vout: Felt::from(claim_data.tx_vout),
+                transaction_struct,
+                rune_contract: compute_rune_contract(claim_data.rune_id),
+            };
+
+            println!("FordefiDepositData: {:?}", deposit_data);
+
+            if let Err(err) = send_fordefi_request(deposit_data).await {
+                state.logger.severe(format!(
+                    "Failed to send fordefi request for txid: {} with error: {:?}",
+                    tx.location.tx_id, err
+                ));
+            }
         }
         Err(err) => {
             state.logger.warning(format!(
@@ -245,17 +255,15 @@ async fn fetch_claim_data(
             .expect("tx_vout is not a valid number")
             .try_into()
             .expect("tx_vout cannot be converted to u32");
-        let sig = Signature {
-            r: Felt::from_dec_str(claim_data["sig"]["r"].as_str().unwrap())?,
-            s: Felt::from_dec_str(claim_data["sig"]["s"].as_str().unwrap())?,
-        };
+        let hashed_value = Felt::from_dec_str(claim_data["hashed_value"].as_str().unwrap())?;
+
         Ok(ClaimData {
             rune_id,
             amount,
             target_addr: Address { felt: target_addr },
             tx_id,
             tx_vout,
-            sig,
+            hashed_value,
         })
     } else {
         Err(anyhow::anyhow!(
