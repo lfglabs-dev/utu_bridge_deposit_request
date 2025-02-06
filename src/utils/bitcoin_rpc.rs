@@ -3,6 +3,7 @@ use bitcoincore_rpc::bitcoin::hashes::Hash;
 use bitcoincore_rpc::bitcoin::BlockHash;
 use zmq::Message;
 
+#[allow(dead_code)]
 pub fn get_block_hash(msg: Message) -> Result<BlockHash> {
     let block_hash_bytes = msg.to_vec();
     if block_hash_bytes.len() == 32 {

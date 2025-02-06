@@ -89,7 +89,7 @@ async fn process_tx(
     session: &mut ClientSession,
     tx_id: String,
 ) -> Result<()> {
-    let supported_runes = get_supported_runes_vec(state).await?;
+    let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
 
     // Fetch transaction details and parse all activities
     let mut offset = 0;
@@ -133,9 +133,9 @@ async fn process_tx(
                     if let Err(e) = process_deposit_transaction(
                         state,
                         &tx,
-                        &receiver_address,
                         &starknet_addr,
                         &block_hash,
+                        &runes_mapping,
                     )
                     .await
                     {

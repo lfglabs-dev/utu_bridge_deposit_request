@@ -24,7 +24,6 @@ pub async fn send_fordefi_request(claim_data: FordefiDepositData) -> Result<()> 
             "Error while encoding typed message data into hex string"
         ));
     };
-    println!("raw_data {}", raw_data);
 
     let note = if let Ok(note) = encode_data(claim_data) {
         note
@@ -33,14 +32,12 @@ pub async fn send_fordefi_request(claim_data: FordefiDepositData) -> Result<()> 
             "Error while converting claim_data as string"
         ));
     };
-    println!("note: {}", note);
 
     let request_body = if let Ok(request_body) = get_fordefi_request_body(raw_data, note) {
         request_body
     } else {
         return Err(anyhow::anyhow!("Error while getting request body"));
     };
-    println!("request_body {}", request_body);
 
     let path = "/api/v1/transactions";
     let timestamp = SystemTime::now()
@@ -50,8 +47,8 @@ pub async fn send_fordefi_request(claim_data: FordefiDepositData) -> Result<()> 
         .to_string();
     let payload = format!("{path}|{timestamp}|{request_body}");
 
-    let private_key_file = "private.pem";
-    let priv_pem = fs::read_to_string(private_key_file).expect("Failed to read pem file");
+    let private_key_path = &*FORDEFI_PRIVATE_KEY_FILE_PATH;
+    let priv_pem = fs::read_to_string(private_key_path).expect("Failed to read pem file");
     let private_key = p256::SecretKey::from_sec1_pem(&priv_pem).expect("Failed to decode pem key");
     let signing_key: SigningKey = private_key.into();
 
@@ -71,20 +68,17 @@ pub async fn send_fordefi_request(claim_data: FordefiDepositData) -> Result<()> 
     match res {
         Ok(response) => {
             if response.status().is_success() {
-                println!("Request sent successfully");
+                Ok(())
             } else {
-                println!(
+                Err(anyhow::anyhow!(format!(
                     "Request failed with status code: {} and response {}",
                     response.status(),
                     response.text().await?
-                );
+                )))
             }
         }
-        Err(e) => {
-            println!("Request failed with error: {}", e);
-        }
+        Err(e) => Err(anyhow::anyhow!(format!("Request failed with error: {}", e))),
     }
-    Ok(())
 }
 
 fn encode_data(claim_data: FordefiDepositData) -> Result<String> {
@@ -124,7 +118,6 @@ fn get_raw_data(hashed_value: String) -> Result<String> {
         .replace("\n", "\n    ")
         .replace("    ", "  ");
     let hex_encoded = format!("0x{}", hex::encode(formatted_json));
-    println!("hex_encoded: {}", hex_encoded);
     Ok(hex_encoded)
 }
 
@@ -156,13 +149,12 @@ mod tests {
     use bigdecimal::{num_bigint::BigInt, Num};
     use bitcoin::Txid;
     use bitcoincore_rpc::{Auth, Client, RpcApi};
-    use starknet::core::types::TypedData;
-    use starknet_crypto::{pedersen_hash, verify, Felt};
+    use starknet::{core::types::TypedData, macros::felt};
+    use starknet_crypto::{poseidon_hash_many, verify, Felt};
 
     use crate::utils::{
         calldata::{get_transaction_struct_felt, hex_to_hash_rev},
         starknet::{compute_rune_contract, to_uint256},
-        Address,
     };
 
     use super::*;
@@ -196,10 +188,7 @@ mod tests {
         // Digest = [0xfc570046, 0x8f321500, 0x4d48331d, 0x7dd4516, 0xf9511ed6, 0x2d5c58e2, 0x5694a588, 0x6dcd51bd]
         let tx_u256 = to_uint256(BigInt::from_str_radix(tx_deposit_id, 16).unwrap());
 
-        let hashed_value = pedersen_hash(
-            &pedersen_hash(&pedersen_hash(&rune_id, &amount.0), &addr),
-            &tx_u256.0,
-        );
+        let hashed_value = poseidon_hash_many(&[rune_id, amount.0, addr, tx_u256.0]);
 
         let tx_id = Txid::from_str(tx_deposit_id).unwrap();
         let tx_info = bitcoin_provider
@@ -209,14 +198,15 @@ mod tests {
 
         FordefiDepositData {
             rune_id,
-            amount,
-            target_addr: Address { felt: addr },
+            amount: (felt!("0x7a120"), Felt::ZERO),
             tx_id: hex_to_hash_rev(Some(tx_id)),
             tx_id_str: tx_deposit_id.to_string(),
-            tx_vout: Felt::from(1),
+            tx_vout: Some(1),
             hashed_value,
             transaction_struct,
             rune_contract: compute_rune_contract(rune_id),
+            starknet_addr: "0x403c80a49f16ed8ecf751f4b3ad62cc8f85ebeb2d40dc3b4377a089b438995d"
+                .to_string(),
         }
     }
 
@@ -229,20 +219,13 @@ mod tests {
     #[test]
     fn test_encode_data() {
         let claim_data = get_fordefi_deposit_data();
-        let encoded_str = encode_data(claim_data).unwrap();
-        println!("encoded_str: {}", encoded_str);
+        let _encoded_str = encode_data(claim_data).unwrap();
     }
 
     #[test]
     fn test_verify_sig() {
         let fordefi_vault_addr =
-            Felt::from_hex("0x04891b09fb57529541ea78296fe07857dbd518d45007eea78f2271b9c82f652b")
-                .unwrap();
-
-        let claim_data = get_fordefi_deposit_data();
-        let raw_data = get_raw_data(claim_data.hashed_value.to_fixed_hex_string()).unwrap();
-        let note = encode_data(claim_data.clone()).unwrap();
-        let request_body = get_fordefi_request_body(raw_data, note).unwrap();
+            felt!("0x04891b09fb57529541ea78296fe07857dbd518d45007eea78f2271b9c82f652b");
 
         let raw_typed_data = r#"{
             "types": {
@@ -266,7 +249,7 @@ mod tests {
             },
             "message": {
                 "Operation": "UtuRunesBridge: Claim",
-                "Hashed value": "0x02ffb402c24b7680c0b8be3f25e6af70806c4a2b123ad3a43753cd2fddace83c"
+                "Hashed value": "0x07a6d66b689fda331b65dba000b887cc17796ded88da0c9c3147c7cc3654a6b2"
             }
         }"#;
         let typed_data = serde_json::from_str::<TypedData>(raw_typed_data).unwrap();
@@ -274,10 +257,9 @@ mod tests {
 
         // Message hash received from Fordefi for transaction_id = "dda5a722-fc87-4e44-9854-3cd7581d87cc"
         let msg_hash_received =
-            Felt::from_hex("0x056f72aab803a7ed48dbebbcbdb886d7c5b0156955de69b65779829a9cbd2ea6")
-                .unwrap();
+            felt!("0x056f72aab803a7ed48dbebbcbdb886d7c5b0156955de69b65779829a9cbd2ea6");
 
-        assert_eq!(computed_msg_hash, claim_data.hashed_value);
+        assert_eq!(computed_msg_hash, msg_hash_received);
 
         // Signature received from Fordefi for transaction_id = "dda5a722-fc87-4e44-9854-3cd7581d87cc"
         let starknet_signatures = [
@@ -292,6 +274,13 @@ mod tests {
         ];
 
         // Verify the signature
-        // let res = verify(public_key, message_hash, &signature.r, &signature.s).unwrap();
+        let res = verify(
+            &starknet_signatures[2],
+            &msg_hash_received,
+            &starknet_signatures[3],
+            &starknet_signatures[4],
+        )
+        .unwrap();
+        assert!(res);
     }
 }

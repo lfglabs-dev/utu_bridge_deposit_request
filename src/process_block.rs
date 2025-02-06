@@ -1,25 +1,23 @@
-use std::{env, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use bitcoin::{BlockHash, Txid};
 use bitcoincore_rpc::{json::GetRawTransactionResult, RpcApi};
 use reqwest::Client;
-use serde_json::{json, Value};
-use starknet::core::types::Felt;
 use tokio::time::sleep;
 
 use crate::{
     models::{
-        claim::{ClaimData, FordefiDepositData},
+        claim::FordefiDepositData,
         hiro::{BlockActivity, BlockActivityResult, Operation},
+        runes::RuneDetail,
     },
     state::{database::DatabaseExt, AppState},
     utils::{
         calldata::{get_transaction_struct_felt, hex_to_hash_rev},
         fordefi::send_fordefi_request,
         runes::get_supported_runes_vec,
-        starknet::compute_rune_contract,
-        Address,
+        starknet::{compute_hashed_value, compute_rune_contract},
     },
 };
 
@@ -52,7 +50,7 @@ pub async fn process_block(
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    let supported_runes = get_supported_runes_vec(state).await?;
+    let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
 
     // Fetch block activity
     let mut offset = 0;
@@ -108,9 +106,9 @@ pub async fn process_block(
                     if let Err(e) = process_deposit_transaction(
                         state,
                         &tx,
-                        &receiver_address,
                         &starknet_addr,
                         &block_hash,
+                        &runes_mapping,
                     )
                     .await
                     {
@@ -168,44 +166,40 @@ pub fn is_valid_receive_operation(tx: &BlockActivityResult, supported_runes: &Ve
 pub async fn process_deposit_transaction(
     state: &Arc<AppState>,
     tx: &BlockActivityResult,
-    receiver_addr: &String,
     starknet_addr: &String,
     block_hash: &BlockHash,
+    runes_mapping: &HashMap<String, RuneDetail>,
 ) -> Result<()> {
-    let claim_data = match fetch_claim_data(tx, receiver_addr, starknet_addr).await {
-        Ok(claim_data) => claim_data,
-        Err(err) => {
-            return Err(anyhow::anyhow!(format!(
-                "Failed to fetch claim data : {:?}",
-                err
-            )))
-        }
-    };
+    // Compute hash_value needed for fordefi signature
+    let (hashed_value, rune_id_felt, amount_u256) =
+        if let Ok(hashed_value) = compute_hashed_value(runes_mapping, tx.clone(), starknet_addr) {
+            hashed_value
+        } else {
+            return Err(anyhow::anyhow!("Failed to compute hashed value"));
+        };
 
     // Retrieve the complete transaction from bitcoin RPC
     // We need it to build the starknet transaction.
     match fetch_bitcoin_transaction_info(state, &tx.location.tx_id, block_hash) {
         Ok(tx_info) => {
             let transaction_struct = get_transaction_struct_felt(&state.bitcoin_provider, tx_info);
-            let tx_id = match Txid::from_str(&claim_data.tx_id) {
+            let tx_id = match Txid::from_str(&tx.location.tx_id) {
                 Ok(tx_id) => Some(tx_id),
                 Err(_) => None,
             };
 
             // we send the deposit request to fordefi
             let deposit_data = FordefiDepositData {
-                rune_id: claim_data.rune_id,
-                amount: claim_data.amount,
-                target_addr: claim_data.target_addr,
-                hashed_value: claim_data.hashed_value,
+                rune_id: rune_id_felt,
+                amount: amount_u256,
+                hashed_value,
                 tx_id: hex_to_hash_rev(tx_id),
-                tx_id_str: claim_data.tx_id,
-                tx_vout: Felt::from(claim_data.tx_vout),
+                tx_id_str: tx.clone().location.tx_id,
+                tx_vout: tx.location.vout,
                 transaction_struct,
-                rune_contract: compute_rune_contract(claim_data.rune_id),
+                rune_contract: compute_rune_contract(rune_id_felt),
+                starknet_addr: starknet_addr.to_string(),
             };
-
-            println!("FordefiDepositData: {:?}", deposit_data);
 
             if let Err(err) = send_fordefi_request(deposit_data).await {
                 state.logger.severe(format!(
@@ -222,56 +216,6 @@ pub async fn process_deposit_transaction(
         }
     }
     Ok(())
-}
-
-/// Fetches claim data from the UTU API.
-async fn fetch_claim_data(
-    tx: &BlockActivityResult,
-    receiver_address: &String,
-    starknet_addr: &String,
-) -> Result<ClaimData> {
-    let url = format!("{}/claim_deposit_data", *UTU_API_URL);
-    let payload = json!({
-        "starknet_addr": starknet_addr,
-        "tx_id": tx.location.tx_id,
-        "tx_vout": tx.location.vout,
-    });
-    let claim_res = HTTP_CLIENT.post(&url).json(&payload).send().await?;
-    if claim_res.status().is_success() {
-        // let claim_data = claim_res.json::<ClaimDepositDataRes>().await?;
-        let claim_data_value = claim_res.json::<Value>().await?;
-
-        // Extract fields manually because deserialization directly to Felt is failing.
-        let claim_data = claim_data_value["data"].as_object().unwrap();
-        let rune_id = Felt::from_dec_str(claim_data["rune_id"].as_str().unwrap())?;
-        let amount = (
-            Felt::from_dec_str(claim_data["amount"][0].as_str().unwrap())?,
-            Felt::from_dec_str(claim_data["amount"][1].as_str().unwrap())?,
-        );
-        let target_addr = Felt::from_hex(claim_data["target_addr"].as_str().unwrap())?;
-        let tx_id = claim_data["tx_id"].as_str().unwrap().to_string();
-        let tx_vout = claim_data["tx_vout"]
-            .as_u64()
-            .expect("tx_vout is not a valid number")
-            .try_into()
-            .expect("tx_vout cannot be converted to u32");
-        let hashed_value = Felt::from_dec_str(claim_data["hashed_value"].as_str().unwrap())?;
-
-        Ok(ClaimData {
-            rune_id,
-            amount,
-            target_addr: Address { felt: target_addr },
-            tx_id,
-            tx_vout,
-            hashed_value,
-        })
-    } else {
-        Err(anyhow::anyhow!(
-            "Failed to retrieve claim data for deposit address: {} with error: {:?}",
-            receiver_address,
-            claim_res.text().await
-        ))
-    }
 }
 
 /// Fetches transaction data from the Bitcoin RPC provider.

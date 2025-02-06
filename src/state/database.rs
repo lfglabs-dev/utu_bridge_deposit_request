@@ -1,9 +1,6 @@
 use mongodb::{bson::doc, ClientSession, Database};
 
-use crate::models::{
-    database::{BlacklistedDepositDocument, DepositAddressDocument},
-    runes::SupportedRuneDocument,
-};
+use crate::models::{database::DepositAddressDocument, runes::SupportedRuneDocument};
 
 use super::DatabaseError;
 
@@ -13,11 +10,6 @@ pub trait DatabaseExt {
         session: &mut ClientSession,
         receiver_address: String,
     ) -> Result<String, DatabaseError>;
-    async fn blacklist_deposits(
-        &self,
-        session: &mut ClientSession,
-        tx_id: Vec<String>,
-    ) -> Result<(), DatabaseError>;
     async fn get_supported_runes(
         &self,
         session: &mut ClientSession,
@@ -41,24 +33,6 @@ impl DatabaseExt for Database {
             Some(doc) => Ok(doc.starknet_address),
             None => Err(DatabaseError::NotFound),
         }
-    }
-
-    async fn blacklist_deposits(
-        &self,
-        session: &mut ClientSession,
-        tx_ids: Vec<String>,
-    ) -> Result<(), DatabaseError> {
-        let documents: Vec<BlacklistedDepositDocument> = tx_ids
-            .into_iter()
-            .map(|id| BlacklistedDepositDocument { tx_id: id })
-            .collect();
-        self.collection::<BlacklistedDepositDocument>("blacklisted_deposits")
-            .insert_many(documents)
-            .session(&mut *session)
-            .await
-            .map_err(DatabaseError::QueryFailed)?;
-
-        Ok(())
     }
 
     async fn get_supported_runes(

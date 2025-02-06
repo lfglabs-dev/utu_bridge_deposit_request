@@ -5,7 +5,6 @@ mod models;
 mod process_block;
 mod server;
 mod state;
-mod transactions;
 use axum::http::StatusCode;
 use axum::Extension;
 use axum::Router;
@@ -17,7 +16,6 @@ use models::blocks::BlockWithTransactions;
 use mongodb::bson::doc;
 use state::blocks::BlockStateTrait;
 use state::init::AppStateTraitInitializer;
-use state::transactions::TransactionBuilderStateTrait;
 use state::AppState;
 use state::WithState;
 use std::env;
@@ -29,9 +27,6 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tower_http::cors;
 use tower_http::cors::CorsLayer;
-use transactions::build_and_run_multicall;
-use utils::general::get_current_timestamp;
-use utils::starknet::check_last_nonce_update_timestamp;
 
 lazy_static::lazy_static! {
     pub static ref ROUTE_REGISTRY: Mutex<Vec<Box<dyn WithState>>> = Mutex::new(Vec::new());
@@ -228,45 +223,11 @@ async fn main() {
         }
     });
 
-    // transaction loop task
-    let tx_state = shared_state.clone();
-    let tx_task = tokio::spawn(async move {
-        loop {
-            check_last_nonce_update_timestamp(&tx_state).await;
-
-            let tx_count: usize = tx_state.transactions.get_tx_count().await;
-            let last_update = tx_state.transactions.with_last_sent_read(|t| *t).await;
-            let current_time = get_current_timestamp();
-
-            if tx_count > 0 {
-                let amount = if tx_count >= tx_state.transactions.max_queue_length {
-                    tx_state.transactions.max_queue_length
-                } else if last_update + tx_state.transactions.max_wait_time_ms < current_time {
-                    tx_count
-                } else {
-                    0
-                };
-
-                tx_state
-                    .logger
-                    .info(format!("Attempting to send {} tx", amount));
-
-                let tx_to_send = tx_state.transactions.empty_transactions_state(amount).await;
-                let refresh_clone = tx_state.clone();
-                build_and_run_multicall(&refresh_clone, tx_to_send).await;
-            }
-
-            // We wait 5 seconds before checking again
-            sleep(tokio::time::Duration::from_secs(5)).await;
-        }
-    });
-
     // wait for both the zqm task, block_task to stop the program
     tokio::select! {
         _ = server_task => {},
         _ = zmq_task => {},
         _ = block_task => {},
-        _ = tx_task => {},
     }
 }
 

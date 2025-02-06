@@ -205,7 +205,7 @@ mod tests {
 
     use bitcoin::Txid;
     use bitcoincore_rpc::{Auth, RpcApi};
-    use starknet::core::types::Felt;
+    use starknet::{core::types::Felt, macros::felt};
 
     use crate::utils::calldata::hex_to_hash_rev;
 
@@ -257,46 +257,42 @@ mod tests {
             Felt::ZERO,
             Felt::ZERO,
             Felt::ZERO,
-            Felt::from_hex("0xffffffff").unwrap(),
-            Felt::from_hex("0x6de0f6b0").unwrap(),
-            Felt::from_hex("0x588596f4").unwrap(),
-            Felt::from_hex("0x95fc1df4").unwrap(),
-            Felt::from_hex("0xa4e8465b").unwrap(),
-            Felt::from_hex("0x96064dee").unwrap(),
-            Felt::from_hex("0x575211f2").unwrap(),
-            Felt::from_hex("0x901a8693").unwrap(),
-            Felt::from_hex("0xe2bf22fb").unwrap(),
+            felt!("0xffffffff"),
+            felt!("0x6de0f6b0"),
+            felt!("0x588596f4"),
+            felt!("0x95fc1df4"),
+            felt!("0xa4e8465b"),
+            felt!("0x96064dee"),
+            felt!("0x575211f2"),
+            felt!("0x901a8693"),
+            felt!("0xe2bf22fb"),
             Felt::ZERO,
-            Felt::from_hex("0xc63").unwrap(),
+            felt!("0xc63"),
             Felt::ONE,
-            Felt::from_hex("0x512079a2aa2c82cd13dadc5e3c38338406b291a2c26c39feb5a65f08e49853")
-                .unwrap(),
-            Felt::from_hex("0x5c4109").unwrap(),
+            felt!("0x512079a2aa2c82cd13dadc5e3c38338406b291a2c26c39feb5a65f08e49853"),
+            felt!("0x5c4109"),
             Felt::THREE,
             Felt::ZERO,
-            Felt::from_hex("0xd540c").unwrap(),
-            Felt::from_hex("0x6752a77f").unwrap(),
+            felt!("0xd540c"),
+            felt!("0x6752a77f"),
             Felt::ZERO,
             Felt::ONE,
             Felt::TWO,
-            Felt::from_hex("0xf3199e905926f317c3f72f839028d5968bc3cc50efffa24a15e99e619d7c36")
-                .unwrap(),
-            Felt::from_hex("0x466e5c0bb9caa3b6bbdd2b5f4a74038de691abaa86156c3ccfbd1a69003a86")
-                .unwrap(),
-            Felt::from_hex("0x90c2").unwrap(),
+            felt!("0xf3199e905926f317c3f72f839028d5968bc3cc50efffa24a15e99e619d7c36"),
+            felt!("0x466e5c0bb9caa3b6bbdd2b5f4a74038de691abaa86156c3ccfbd1a69003a86"),
+            felt!("0x90c2"),
             Felt::TWO,
             Felt::TWO,
-            Felt::from_hex("0xa56").unwrap(),
+            felt!("0xa56"),
             Felt::ONE,
-            Felt::from_hex("0x512079a2aa2c82cd13dadc5e3c38338406b291a2c26c39feb5a65f08e49853")
-                .unwrap(),
-            Felt::from_hex("0x5c4109").unwrap(),
+            felt!("0x512079a2aa2c82cd13dadc5e3c38338406b291a2c26c39feb5a65f08e49853"),
+            felt!("0x5c4109"),
             Felt::THREE,
             Felt::ZERO,
             Felt::ZERO,
             Felt::ZERO,
-            Felt::from_hex("0x6a5d0714c0a23314b802").unwrap(),
-            Felt::from_hex("0xa").unwrap(),
+            felt!("0x6a5d0714c0a23314b802"),
+            felt!("0xa"),
             Felt::ZERO,
             Felt::ZERO,
         ];

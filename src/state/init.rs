@@ -2,20 +2,12 @@ use std::{env, sync::Arc};
 
 use bitcoincore_rpc::Auth;
 use mongodb::options::ClientOptions;
-use reqwest::Url;
-use starknet::{
-    accounts::ConnectedAccount,
-    providers::{jsonrpc::HttpTransport, JsonRpcClient},
-};
 use tokio::sync::{Notify, RwLock};
 
 use crate::{
     logger::Logger,
     state::{blocks::BlockStateTrait, AppState, BlocksState},
-    utils::starknet::get_account,
 };
-
-use super::{transactions::TransactionBuilderStateTrait, TransactionBuilderState};
 
 pub trait AppStateTraitInitializer {
     async fn load() -> Arc<Self>;
@@ -50,16 +42,6 @@ impl AppStateTraitInitializer for AppState {
         )
         .unwrap();
 
-        let starknet_provider = JsonRpcClient::new(HttpTransport::new(
-            Url::parse(&env::var("STARKNET_RPC_URL").expect("STARKNET_RPC_URL must be set"))
-                .unwrap(),
-        ));
-        let starknet_account = get_account().await;
-        let nonce = starknet_account
-            .get_nonce()
-            .await
-            .expect("Unable to fetch nonce from account");
-
         // Load blacklisted addresses
         let blacklisted_deposit_addr_len = env::var("BLACKLISTED_DEPOSIT_ADDR_LEN")
             .expect("BLACKLISTED_DEPOSIT_ADDR_LEN must be set")
@@ -77,10 +59,7 @@ impl AppStateTraitInitializer for AppState {
             logger,
             db,
             bitcoin_provider,
-            starknet_provider,
-            starknet_account,
             blocks: RwLock::new(<BlocksState>::init()),
-            transactions: <TransactionBuilderState>::init(nonce),
             notifier: Notify::new(),
             blacklisted_deposit_addr,
         })
