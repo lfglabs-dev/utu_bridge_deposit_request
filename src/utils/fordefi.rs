@@ -153,7 +153,7 @@ mod tests {
     use starknet_crypto::{poseidon_hash_many, verify, Felt};
 
     use crate::utils::{
-        calldata::{get_transaction_struct_felt, hex_to_hash_rev},
+        calldata::get_transaction_struct_felt,
         starknet::{compute_rune_contract, to_uint256},
     };
 
@@ -199,8 +199,7 @@ mod tests {
         FordefiDepositData {
             rune_id,
             amount: (felt!("0x7a120"), Felt::ZERO),
-            tx_id: hex_to_hash_rev(Some(tx_id)),
-            tx_id_str: tx_deposit_id.to_string(),
+            tx_id: tx_deposit_id.to_string(),
             tx_vout: Some(1),
             hashed_value,
             transaction_struct,

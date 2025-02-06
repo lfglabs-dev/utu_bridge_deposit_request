@@ -183,18 +183,13 @@ pub async fn process_deposit_transaction(
     match fetch_bitcoin_transaction_info(state, &tx.location.tx_id, block_hash) {
         Ok(tx_info) => {
             let transaction_struct = get_transaction_struct_felt(&state.bitcoin_provider, tx_info);
-            let tx_id = match Txid::from_str(&tx.location.tx_id) {
-                Ok(tx_id) => Some(tx_id),
-                Err(_) => None,
-            };
 
             // we send the deposit request to fordefi
             let deposit_data = FordefiDepositData {
                 rune_id: rune_id_felt,
                 amount: amount_u256,
                 hashed_value,
-                tx_id: hex_to_hash_rev(tx_id),
-                tx_id_str: tx.clone().location.tx_id,
+                tx_id: tx.clone().location.tx_id,
                 tx_vout: tx.location.vout,
                 transaction_struct,
                 rune_contract: compute_rune_contract(rune_id_felt),
