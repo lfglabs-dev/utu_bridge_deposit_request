@@ -81,6 +81,8 @@ pub async fn send_fordefi_request(claim_data: FordefiDepositData) -> Result<()> 
     }
 }
 
+/// Encode FordefiDepositData using json + base64 even though bincode would be smaller
+/// because the data will have to be decoded in a Python script which we want to keep simple.
 fn encode_data(claim_data: FordefiDepositData) -> Result<String> {
     let json_string = serde_json::to_string(&claim_data)?;
     let base64_encoded = BASE64_ENGINE.encode(json_string);
@@ -114,9 +116,7 @@ fn get_raw_data(hashed_value: String) -> Result<String> {
         }
     });
 
-    let formatted_json = serde_json::to_string_pretty(&typed_data)?
-        .replace("\n", "\n    ")
-        .replace("    ", "  ");
+    let formatted_json = serde_json::to_string_pretty(&typed_data)?;
     let hex_encoded = format!("0x{}", hex::encode(formatted_json));
     Ok(hex_encoded)
 }
@@ -212,6 +212,41 @@ mod tests {
     #[tokio::test]
     async fn test_fordefi_request() {
         let claim_data = get_fordefi_deposit_data();
+        send_fordefi_request(claim_data).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_fordefi_request_mainnet() {
+        let bitcoin_provider = get_bitcoin_provider();
+
+        let rune_id: Felt = Felt::from_hex("0x95909ff0").unwrap();
+        let amount = (Felt::from_hex("0x7a120").unwrap(), Felt::ZERO);
+        let addr =
+            Felt::from_hex("0x0302de76464d4e2447F2d1831fb0A1AF101B18F80964fCfff1aD831C0A92e1fD")
+                .unwrap();
+        let tx_deposit_id = "bd51cd6d88a59456e2585c2dd61e51f91645dd071d33484d0015328f460057fc";
+        // Digest = [0xfc570046, 0x8f321500, 0x4d48331d, 0x7dd4516, 0xf9511ed6, 0x2d5c58e2, 0x5694a588, 0x6dcd51bd]
+        let tx_u256 = to_uint256(BigInt::from_str_radix(tx_deposit_id, 16).unwrap());
+
+        let hashed_value = poseidon_hash_many(&[rune_id, amount.0, addr, tx_u256.0]);
+
+        let tx_id = Txid::from_str(tx_deposit_id).unwrap();
+        let tx_info = bitcoin_provider
+            .get_raw_transaction_info(&tx_id, None)
+            .unwrap();
+        let transaction_struct = get_transaction_struct_felt(&bitcoin_provider, tx_info);
+
+         let claim_data = FordefiDepositData {
+            rune_id,
+            amount,
+            tx_id: tx_deposit_id.to_string(),
+            tx_vout: Some(1),
+            hashed_value,
+            transaction_struct,
+            rune_contract: compute_rune_contract(rune_id),
+            starknet_addr: "0x0302de76464d4e2447F2d1831fb0A1AF101B18F80964fCfff1aD831C0A92e1fD"
+                .to_string(),
+        };
         send_fordefi_request(claim_data).await.unwrap();
     }
 
