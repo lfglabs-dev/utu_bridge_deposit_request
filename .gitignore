@@ -6,3 +6,4 @@
 .env.private
 Cargo.lock
 .DS_Store
+private.pem

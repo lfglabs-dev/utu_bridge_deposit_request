@@ -1,24 +1,17 @@
 use bitcoin::BlockHash;
 use bitcoincore_rpc::Client;
 use mongodb::Database;
-use starknet::{
-    accounts::SingleOwnerAccount,
-    core::types::Felt,
-    providers::{jsonrpc::HttpTransport, JsonRpcClient},
-    signers::LocalWallet,
-};
 use thiserror::Error;
 
 use axum::{body::Body, Router};
 use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
 
-use crate::{logger::Logger, models::claim::ClaimCalldata};
+use crate::logger::Logger;
 
 pub mod blocks;
 pub mod database;
 pub mod init;
-pub mod transactions;
 
 #[derive(Error, Debug)]
 pub enum DatabaseError {
@@ -42,25 +35,13 @@ pub struct AppState {
     pub logger: Logger,
     pub db: Database,
     pub bitcoin_provider: Client,
-    pub starknet_provider: JsonRpcClient<HttpTransport>,
-    pub starknet_account: SingleOwnerAccount<JsonRpcClient<HttpTransport>, LocalWallet>,
     pub blocks: RwLock<BlocksState>,
-    pub transactions: TransactionBuilderState,
     pub notifier: Notify,
     pub blacklisted_deposit_addr: Vec<String>,
 }
 
 pub struct BlocksState {
     hashes: Vec<BlockHash>,
-}
-
-pub struct TransactionBuilderState {
-    pub max_queue_length: usize,
-    pub max_wait_time_ms: u64,
-    pub min_wait_time_sec: u64,
-    pub last_sent_timestamp_ms: RwLock<u64>,
-    pub nonce: RwLock<Felt>,
-    pub data: RwLock<Vec<ClaimCalldata>>,
 }
 
 // required for axum_auto_routes
@@ -110,10 +91,4 @@ macro_rules! impl_with_lock {
 
 impl AppState {
     impl_with_lock!(with_blocks, blocks, BlocksState);
-}
-
-impl TransactionBuilderState {
-    impl_with_lock!(with_last_sent, last_sent_timestamp_ms, u64);
-    impl_with_lock!(with_nonce, nonce, Felt);
-    impl_with_lock!(with_transactions, data, Vec<ClaimCalldata>);
 }

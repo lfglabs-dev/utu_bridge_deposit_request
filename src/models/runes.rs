@@ -14,3 +14,9 @@ pub struct SupportedRuneDocument {
     pub supply: Value,
     pub location: Value,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuneDetail {
+    pub divisibility: u64,
+    pub symbol: String,
+}

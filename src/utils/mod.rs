@@ -6,9 +6,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::pub_struct;
 
 pub mod bitcoin_rpc;
-pub mod blacklist;
 pub mod byte_array;
 pub mod calldata;
+pub mod fordefi;
 pub mod general;
 pub mod macros;
 pub mod runes;
@@ -55,6 +55,7 @@ impl fmt::Display for Address {
 }
 
 impl Address {
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         let felt = if s.starts_with("0x") {
             Felt::from_hex(s)
