@@ -14,7 +14,7 @@ use crate::{
     },
     state::{database::DatabaseExt, AppState},
     utils::{
-        calldata::{get_transaction_struct_felt, hex_to_hash_rev},
+        calldata::get_transaction_struct_felt,
         fordefi::send_fordefi_request,
         runes::get_supported_runes_vec,
         starknet::{compute_hashed_value, compute_rune_contract},

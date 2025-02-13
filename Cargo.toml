@@ -9,7 +9,6 @@ starknet-crypto = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "
 starknet-core-derive = { git = "https://github.com/xJonathanLEI/starknet-rs", rev = "171b0c65cac407ee33972e0ab2c3f8744c083753", features = [
     "import_from_starknet",
 ] }
-utu_bridge_deposit_address = { git = "https://github.com/lfglabs-dev/utu_bridge_deposit_address", branch = "chore/starkner-rs-version" }
 axum_auto_routes = { git = "https://github.com/Th0rgal/axum_auto_routes", rev = "ef190613942241f8f93a554cad7d64581a8a0916" }
 axum = { version = "0.6.20", features = ["headers"] }
 toml = "0.5.10"
