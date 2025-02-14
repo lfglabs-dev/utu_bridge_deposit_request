@@ -12,7 +12,7 @@ RUN curl -L -o dotenvx.tar.gz "https://github.com/dotenvx/dotenvx/releases/lates
     && mv dotenvx /usr/local/bin \
     && rm dotenvx.tar.gz
 
-COPY Cargo.toml .env .env.production private_deposit.pem .
+COPY Cargo.toml .env .env.production .
 COPY src ./src
 
 RUN if [ "$CONTAINER_ENV" = "prod" ]; then \
