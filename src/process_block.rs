@@ -196,14 +196,13 @@ pub async fn process_deposit_transaction(
                 rune_contract: compute_rune_contract(rune_id_felt),
                 starknet_addr: starknet_addr.to_string(),
             };
-            println!("Sending to fordefi: {:?}", deposit_data); 
 
-            // if let Err(err) = send_fordefi_request(deposit_data).await {
-            //     state.logger.severe(format!(
-            //         "Failed to send fordefi request for txid: {} with error: {:?}",
-            //         tx.location.tx_id, err
-            //     ));
-            // }
+            if let Err(err) = send_fordefi_request(deposit_data).await {
+                state.logger.severe(format!(
+                    "Failed to send fordefi request for txid: {} with error: {:?}",
+                    tx.location.tx_id, err
+                ));
+            }
         }
         Err(err) => {
             state.logger.warning(format!(
