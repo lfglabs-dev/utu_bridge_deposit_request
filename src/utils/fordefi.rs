@@ -236,7 +236,7 @@ mod tests {
             .unwrap();
         let transaction_struct = get_transaction_struct_felt(&bitcoin_provider, tx_info);
 
-         let claim_data = FordefiDepositData {
+        let claim_data = FordefiDepositData {
             rune_id,
             amount,
             tx_id: tx_deposit_id.to_string(),

@@ -102,7 +102,10 @@ pub async fn process_block(
                     .is_deposit_addr(&mut session, receiver_address.clone())
                     .await
                 {
-                    println!("Processing deposit transaction for tx_id: {}", tx.location.tx_id);
+                    println!(
+                        "Processing deposit transaction for tx_id: {}",
+                        tx.location.tx_id
+                    );
                     // We process the deposit transaction and add it to the queue
                     if let Err(e) = process_deposit_transaction(
                         state,
