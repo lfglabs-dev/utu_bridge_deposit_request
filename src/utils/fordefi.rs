@@ -210,7 +210,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fordefi_request() {
+    async fn test_fordefi_request_sepolia() {
         let claim_data = get_fordefi_deposit_data();
         send_fordefi_request(claim_data).await.unwrap();
     }
