@@ -126,6 +126,20 @@ async fn main() {
                                     .logger
                                     .info(format!("Received block hash: {}", block_hash));
 
+                                let is_included = zmq_state
+                                    .with_blocks_read(|blocks| {
+                                        let block_hashes = blocks.get_blocks();
+                                        block_hashes.contains(&block_hash)
+                                    })
+                                    .await;
+
+                                if is_included {
+                                    zmq_state
+                                        .logger
+                                        .info(format!("Block already exists: {}", block_hash));
+                                    continue;
+                                }
+
                                 zmq_state
                                     .with_blocks(|blocks| {
                                         blocks.add_block(block_hash);
