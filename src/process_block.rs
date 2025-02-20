@@ -64,78 +64,89 @@ pub async fn process_block(
             .get(url)
             .header("x-api-key", HIRO_API_KEY.clone())
             .send()
-            .await?;
+            .await;
 
-        if !res.status().is_success() {
-            state.logger.warning(format!(
-                "Failed to get activity for block_height: {} and block_hash: {} at offset: {}",
-                block_height, block_hash, offset
-            ));
-            continue;
-        }
-
-        let block_activity = res.json::<BlockActivity>().await?;
-
-        if block_activity.total == 0 {
-            // block wasn't indexed yet by hiro, so we refetch it until we have a result
-            continue;
-        }
-
-        for tx in block_activity.results {
-            // As we only need the deposit address to claim the runes on starknet we will check only for Receive operations
-            // that have an address defined (corresponding to the receiver_address of the Receive operation)
-            // and rune_id is in supported_runes
-            if is_valid_receive_operation(&tx, &supported_runes) {
-                let receiver_address = tx.address.clone().unwrap();
-
-                if state.blacklisted_deposit_addr.contains(&receiver_address) {
-                    state.logger.info(format!(
-                        "Skipping blacklisted deposit address: {}",
-                        receiver_address
+        match res {
+            Ok(res) => {
+                if !res.status().is_success() {
+                    state.logger.warning(format!(
+                        "Failed to get activity for block_height: {} and block_hash: {} at offset: {}",
+                        block_height, block_hash, offset
                     ));
                     continue;
                 }
 
-                // Check if the received_address is part of our deposit addresses
-                if let Ok(starknet_addr) = state
-                    .db
-                    .is_deposit_addr(&mut session, receiver_address.clone())
-                    .await
-                {
-                    println!(
-                        "Processing deposit transaction for tx_id: {}",
-                        tx.location.tx_id
-                    );
-                    // We process the deposit transaction and add it to the queue
-                    if let Err(e) = process_deposit_transaction(
-                        state,
-                        &tx,
-                        &starknet_addr,
-                        &block_hash,
-                        &runes_mapping,
-                    )
-                    .await
-                    {
-                        state.logger.warning(format!(
-                            "Failed to process deposit transaction for tx_id: {}: {:?}",
-                            tx.location.tx_id, e
-                        ));
-                    } else {
-                        state.logger.info(format!(
-                            "Processed deposit transaction for tx_id: {}",
-                            tx.location.tx_id
-                        ));
-                        tx_found = true;
+                let block_activity = res.json::<BlockActivity>().await?;
+
+                if block_activity.total == 0 {
+                    // block wasn't indexed yet by hiro, so we refetch it until we have a result
+                    continue;
+                }
+
+                for tx in block_activity.results {
+                    // As we only need the deposit address to claim the runes on starknet we will check only for Receive operations
+                    // that have an address defined (corresponding to the receiver_address of the Receive operation)
+                    // and rune_id is in supported_runes
+                    if is_valid_receive_operation(&tx, &supported_runes) {
+                        let receiver_address = tx.address.clone().unwrap();
+
+                        if state.blacklisted_deposit_addr.contains(&receiver_address) {
+                            state.logger.info(format!(
+                                "Skipping blacklisted deposit address: {}",
+                                receiver_address
+                            ));
+                            continue;
+                        }
+
+                        // Check if the received_address is part of our deposit addresses
+                        if let Ok(starknet_addr) = state
+                            .db
+                            .is_deposit_addr(&mut session, receiver_address.clone())
+                            .await
+                        {
+                            state.logger.info(format!(
+                                "Processing deposit transaction for tx_id: {}",
+                                tx.location.tx_id
+                            ));
+                            // We process the deposit transaction and add it to the queue
+                            if let Err(e) = process_deposit_transaction(
+                                state,
+                                &tx,
+                                &starknet_addr,
+                                &block_hash,
+                                &runes_mapping,
+                            )
+                            .await
+                            {
+                                state.logger.warning(format!(
+                                    "Failed to process deposit transaction for tx_id: {}: {:?}",
+                                    tx.location.tx_id, e
+                                ));
+                            } else {
+                                state.logger.info(format!(
+                                    "Processed deposit transaction for tx_id: {}",
+                                    tx.location.tx_id
+                                ));
+                                tx_found = true;
+                            }
+                        }
                     }
                 }
-            }
-        }
 
-        // we fetch 60 txs at a time and a block can have more so
-        // we continue fetching until we analyze all txs
-        offset += 1;
-        if offset == block_activity.total {
-            break;
+                // we fetch 60 txs at a time and a block can have more so
+                // we continue fetching until we analyze all txs
+                offset += 1;
+                if offset == block_activity.total {
+                    break;
+                }
+            }
+            Err(e) => {
+                state.logger.warning(format!(
+                    "Failed to get activity for block_height: {} and block_hash: {} at offset: {} with error: {:?}, retrying...",
+                    block_height, block_hash, offset, e
+                ));
+                continue;
+            }
         }
 
         // we sleep for HIRO_TIMEOUT_MS to avoid rate limit
