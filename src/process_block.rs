@@ -12,7 +12,7 @@ use crate::{
         hiro::{BlockActivity, BlockActivityResult, Operation},
         runes::RuneDetail,
     },
-    state::{database::DatabaseExt, AppState},
+    state::{database::DatabaseExt, submitted_txs::SubmittedTxsStateTrait, AppState},
     utils::{
         calldata::get_transaction_struct_felt,
         fordefi::send_fordefi_request,
@@ -98,6 +98,26 @@ pub async fn process_block(
                             continue;
                         }
 
+                        // Check this transaction has not been submitted yet
+                        // as Hiro API can return the same tx multiple times in the same block
+                        let identifier = format!(
+                            "{}:{}",
+                            tx.location.tx_id,
+                            tx.location.vout.unwrap_or_default()
+                        );
+                        if state
+                            .with_submitted_txs_read(|submitted_txs| {
+                                submitted_txs.has_tx(identifier.clone())
+                            })
+                            .await
+                        {
+                            state.logger.info(format!(
+                                "Skipping already submitted transaction: {}",
+                                identifier.clone()
+                            ));
+                            continue;
+                        }
+
                         // Check if the received_address is part of our deposit addresses
                         if let Ok(starknet_addr) = state
                             .db
@@ -127,6 +147,12 @@ pub async fn process_block(
                                     "Processed deposit transaction for tx_id: {}",
                                     tx.location.tx_id
                                 ));
+                                // Add tx to submitted txs
+                                state
+                                    .with_submitted_txs(|submitted_txs| {
+                                        submitted_txs.add_tx(identifier)
+                                    })
+                                    .await;
                                 tx_found = true;
                             }
                         }
