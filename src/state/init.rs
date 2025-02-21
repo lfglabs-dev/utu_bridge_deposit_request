@@ -6,10 +6,7 @@ use tokio::sync::{Notify, RwLock};
 
 use crate::{
     logger::Logger,
-    state::{
-        blocks::BlockStateTrait, submitted_txs::SubmittedTxsStateTrait, AppState, BlocksState,
-        SubmittedTxsState,
-    },
+    state::{blocks::BlockStateTrait, AppState, BlocksState},
 };
 
 pub trait AppStateTraitInitializer {
@@ -65,7 +62,6 @@ impl AppStateTraitInitializer for AppState {
             blocks: RwLock::new(<BlocksState>::init()),
             notifier: Notify::new(),
             blacklisted_deposit_addr,
-            submitted_txs: RwLock::new(<SubmittedTxsState>::init()),
         })
     }
 }
