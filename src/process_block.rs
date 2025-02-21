@@ -160,9 +160,10 @@ pub async fn process_block(
                 }
 
                 // we fetch 60 txs at a time and a block can have more so
-                // we continue fetching until we analyze all txs
-                offset += 1;
-                if offset == block_activity.total {
+                // we continue fetching until we analyze all txs. 
+                // Offset is the index of the results
+                offset += 60;
+                if offset >= block_activity.total {
                     break;
                 }
             }
