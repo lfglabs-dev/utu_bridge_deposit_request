@@ -12,7 +12,6 @@ use crate::logger::Logger;
 pub mod blocks;
 pub mod database;
 pub mod init;
-pub mod submitted_txs;
 
 #[derive(Error, Debug)]
 pub enum DatabaseError {
@@ -39,15 +38,10 @@ pub struct AppState {
     pub blocks: RwLock<BlocksState>,
     pub notifier: Notify,
     pub blacklisted_deposit_addr: Vec<String>,
-    pub submitted_txs: RwLock<SubmittedTxsState>,
 }
 
 pub struct BlocksState {
     hashes: Vec<BlockHash>,
-}
-
-pub struct SubmittedTxsState {
-    txs: Vec<String>,
 }
 
 // required for axum_auto_routes
@@ -97,5 +91,4 @@ macro_rules! impl_with_lock {
 
 impl AppState {
     impl_with_lock!(with_blocks, blocks, BlocksState);
-    impl_with_lock!(with_submitted_txs, submitted_txs, SubmittedTxsState);
 }
