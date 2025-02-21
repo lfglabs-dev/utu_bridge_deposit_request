@@ -157,8 +157,8 @@ async fn process_tx(
 
         // we fetch 60 activities at a time and a tx could have more so
         // we continue fetching until we analyze all activities in tx
-        offset += 1;
-        if tx_activity.total <= offset * 60 {
+        offset += 60;
+        if offset >= tx_activity.total {
             break;
         }
 
