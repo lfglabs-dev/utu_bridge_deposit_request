@@ -215,6 +215,7 @@ async fn main() {
                                     &block_state,
                                     block_hash,
                                     block.height,
+                                    true,
                                 )
                                 .await
                                 {

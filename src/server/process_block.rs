@@ -50,7 +50,7 @@ pub async fn process_block_query(
         }
     };
 
-    if let Err(e) = process_block(&state, block_hash, block_height).await {
+    if let Err(e) = process_block(&state, block_hash, block_height, false).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiResponse::new(
