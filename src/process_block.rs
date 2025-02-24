@@ -37,6 +37,7 @@ pub async fn process_block(
     state: &Arc<AppState>,
     block_hash: BlockHash,
     block_height: u64,
+    main_loop: bool,
 ) -> Result<()> {
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
@@ -55,6 +56,8 @@ pub async fn process_block(
     // Fetch block activity
     let mut offset = 0;
     let mut tx_found = false;
+    let max_attempts = 10;
+    let mut attempts = 0;
     loop {
         let url = format!(
             "{}/runes/v1/blocks/{}/activity?offset={}&limit=60",
@@ -68,18 +71,12 @@ pub async fn process_block(
 
         match res {
             Ok(res) => {
-                if !res.status().is_success() {
-                    state.logger.warning(format!(
-                        "Failed to get activity for block_height: {} and block_hash: {} at offset: {}",
-                        block_height, block_hash, offset
-                    ));
-                    continue;
-                }
-
+                attempts += 1;
                 let block_activity = res.json::<BlockActivity>().await?;
 
-                if block_activity.total == 0 {
-                    // block wasn't indexed yet by hiro, so we refetch it until we have a result
+                if block_activity.total == 0 && attempts < max_attempts {
+                    // block wasn't indexed yet by hiro, so we wait refetch it until we have a result
+                    sleep(Duration::from_secs(1)).await;
                     continue;
                 }
 
@@ -137,16 +134,22 @@ pub async fn process_block(
                 // we continue fetching until we analyze all txs.
                 // Offset is the index of the results
                 offset += 60;
+                attempts = 0;
                 if offset >= block_activity.total {
                     break;
                 }
             }
             Err(e) => {
                 state.logger.warning(format!(
-                    "Failed to get activity for block_height: {} and block_hash: {} at offset: {} with error: {:?}, retrying...",
-                    block_height, block_hash, offset, e
+                    "Failed to get activity for block_height: {} and block_hash: {} at offset: {} and attempts: {} with error: {:?}, retrying...",
+                    block_height, block_hash, offset, attempts, e
                 ));
-                continue;
+                if attempts < max_attempts {
+                    attempts += 1;
+                    continue;
+                } else {
+                    break;
+                }
             }
         }
 
@@ -162,12 +165,17 @@ pub async fn process_block(
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    if tx_found {
+    if main_loop {
         Ok(())
     } else {
-        Err(anyhow::anyhow!(
-            "Failed to process block. Unable to find any matching deposits in block."
-        ))
+        if tx_found {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(format!(
+                "Unable to find any matching deposits in block: {}",
+                block_hash
+            )))
+        }
     }
 }
 
