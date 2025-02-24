@@ -135,10 +135,6 @@ pub async fn process_block(
                 // Offset is the index of the results
                 offset += 60;
                 attempts = 0;
-                println!(
-                    "offset: {}, block_activity.total: {}",
-                    offset, block_activity.total
-                );
                 if offset >= block_activity.total {
                     break;
                 }
