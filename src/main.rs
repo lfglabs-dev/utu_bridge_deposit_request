@@ -27,6 +27,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tower_http::cors;
 use tower_http::cors::CorsLayer;
+use utils::runes::log_supported_runes;
 
 lazy_static::lazy_static! {
     pub static ref ROUTE_REGISTRY: Mutex<Vec<Box<dyn WithState>>> = Mutex::new(Vec::new());
@@ -38,7 +39,7 @@ async fn main() {
     let shared_state: Arc<AppState> = AppState::load().await;
     shared_state
         .logger
-        .async_info("starting utu bridge_auto_claim")
+        .async_info("starting utu deposits_request")
         .await;
 
     // setup http server
@@ -93,6 +94,11 @@ async fn main() {
     //     .set_subscribe(b"hashblock")
     //     .expect("Failed to subscribe to hashblock");
 
+    shared_state
+        .logger
+        .info("Listening to separate deposit requests from Bitcoin to Starknet.");
+    let _ = log_supported_runes(&shared_state).await;
+
     subscriber
         .set_subscribe(b"rawblock")
         .expect("Failed to subscribe to hashblock");
@@ -112,9 +118,10 @@ async fn main() {
                             match raw_block_msg.bytes().collect::<Result<Vec<u8>, _>>() {
                                 Ok(data) => data,
                                 Err(e) => {
-                                    zmq_state
-                                        .logger
-                                        .info(format!("Failed to collect raw block bytes: {}", e));
+                                    zmq_state.logger.warning(format!(
+                                        "Failed to collect raw block bytes: {}",
+                                        e
+                                    ));
                                     return; // Exit the current iteration if there's an error
                                 }
                             };
@@ -122,9 +129,15 @@ async fn main() {
                         match deserialize::<Block>(&raw_block_data) {
                             Ok(block) => {
                                 let block_hash = block.block_hash();
-                                zmq_state
-                                    .logger
-                                    .info(format!("Received block hash: {}", block_hash));
+                                let block_height = if let Ok(height) = block.bip34_block_height() {
+                                    height.to_string()
+                                } else {
+                                    "unknown".to_string()
+                                };
+                                zmq_state.logger.debug(format!(
+                                    "Received block (height: {}) | Hash: {}",
+                                    block_height, block_hash
+                                ));
 
                                 let is_included = zmq_state
                                     .with_blocks_read(|blocks| {
@@ -134,9 +147,6 @@ async fn main() {
                                     .await;
 
                                 if is_included {
-                                    zmq_state
-                                        .logger
-                                        .info(format!("Block already exists: {}", block_hash));
                                     continue;
                                 }
 
@@ -151,7 +161,7 @@ async fn main() {
                                 // Handle deserialization errors
                                 zmq_state
                                     .logger
-                                    .info(format!("Failed to deserialize raw block: {}", e));
+                                    .warning(format!("Failed to deserialize raw block: {}", e));
                             }
                         }
                     }
@@ -210,7 +220,7 @@ async fn main() {
                             if block.confirmations >= *MIN_CONFIRMATIONS {
                                 block_state
                                     .logger
-                                    .info(format!("Processing block: {}", block_hash));
+                                    .info(format!("Processing block at height: {}", block.height));
                                 if let Err(e) = process_block::process_block(
                                     &block_state,
                                     block_hash,

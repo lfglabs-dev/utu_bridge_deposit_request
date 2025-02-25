@@ -1,5 +1,5 @@
 [package]
-name = "utu_auto_claim"
+name = "deposits_request"
 version = "0.1.0"
 edition = "2021"
 
