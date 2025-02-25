@@ -26,7 +26,7 @@ EXPOSE 8082
 ENV RUST_BACKTRACE=1
 
 CMD if [ "$CONTAINER_ENV" = "prod" ]; then \
-        dotenvx run -f .env.production -- ./target/release/utu_auto_claim; \
+        dotenvx run -f .env.production -- ./target/release/deposit_request; \
     else \
-        dotenvx run -- ./target/debug/utu_auto_claim; \
+        dotenvx run -- ./target/debug/deposit_request; \
     fi

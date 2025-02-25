@@ -39,7 +39,7 @@ async fn main() {
     let shared_state: Arc<AppState> = AppState::load().await;
     shared_state
         .logger
-        .async_info("starting utu deposits_request")
+        .async_info("starting utu deposit_request")
         .await;
 
     // setup http server
