@@ -39,3 +39,31 @@ pub async fn get_supported_runes_vec(
 
     Ok((supported_runes, rune_map))
 }
+
+pub async fn log_supported_runes(state: &Arc<AppState>) -> Result<()> {
+    let mut session = match state.db.client().start_session().await {
+        Ok(session) => session,
+        Err(_) => {
+            return Err(anyhow::anyhow!(
+                "Database error: unable to start session".to_string()
+            ));
+        }
+    };
+    if let Err(err) = session.start_transaction().await {
+        return Err(anyhow::anyhow!("Database error: {:?}", err));
+    };
+
+    let supported_runes = state.db.get_supported_runes(&mut session).await?;
+
+    let mut formatted_runes = String::from("Supported runes:\n");
+    for rune in supported_runes {
+        formatted_runes.push_str(&format!("  - {} {}\n", rune.spaced_name, rune.symbol));
+    }
+    // Remove the last newline if it exists
+    if formatted_runes.ends_with('\n') {
+        formatted_runes.pop();
+    }
+    state.logger.info(formatted_runes);
+
+    Ok(())
+}

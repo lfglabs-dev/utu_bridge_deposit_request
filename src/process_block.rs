@@ -88,10 +88,6 @@ pub async fn process_block(
                         let receiver_address = tx.address.clone().unwrap();
 
                         if state.blacklisted_deposit_addr.contains(&receiver_address) {
-                            state.logger.info(format!(
-                                "Skipping blacklisted deposit address: {}",
-                                receiver_address
-                            ));
                             continue;
                         }
 
@@ -101,10 +97,18 @@ pub async fn process_block(
                             .is_deposit_addr(&mut session, receiver_address.clone())
                             .await
                         {
+                            let rune_symbol = if let Some(rune) = runes_mapping.get(&tx.rune.id) {
+                                rune.symbol.clone()
+                            } else {
+                                tx.rune.name.clone()
+                            };
                             state.logger.info(format!(
-                                "Processing deposit transaction for tx_id: {}",
-                                tx.location.tx_id
+                                "Processing {} | {} x {}",
+                                tx.location.tx_id,
+                                tx.amount.clone().unwrap_or("0".to_string()),
+                                rune_symbol
                             ));
+
                             // We process the deposit transaction and add it to the queue
                             if let Err(e) = process_deposit_transaction(
                                 state,
@@ -116,14 +120,14 @@ pub async fn process_block(
                             .await
                             {
                                 state.logger.warning(format!(
-                                    "Failed to process deposit transaction for tx_id: {}: {:?}",
+                                    "Failed to process deposit transaction {} with error: {:?}",
                                     tx.location.tx_id, e
                                 ));
                             } else {
-                                state.logger.info(format!(
-                                    "Processed deposit transaction for tx_id: {}",
-                                    tx.location.tx_id
-                                ));
+                                // state.logger.info(format!(
+                                //     "Processed deposit transaction for tx_id: {}",
+                                //     tx.location.tx_id
+                                // ));
                                 tx_found = true;
                             }
                         }
@@ -220,16 +224,23 @@ pub async fn process_deposit_transaction(
                 starknet_addr: starknet_addr.to_string(),
             };
 
-            if let Err(err) = send_fordefi_request(deposit_data).await {
-                state.logger.severe(format!(
-                    "Failed to send fordefi request for txid: {} with error: {:?}",
-                    tx.location.tx_id, err
-                ));
+            match send_fordefi_request(deposit_data).await {
+                Ok(fordefi_id) => {
+                    state
+                        .logger
+                        .debug(format!("Processed with Fordefi tx-id: {}", fordefi_id));
+                }
+                Err(err) => {
+                    state.logger.severe(format!(
+                        "Failed to send fordefi request for txid: {} with error: {:?}",
+                        tx.location.tx_id, err
+                    ));
+                }
             }
         }
         Err(err) => {
             state.logger.warning(format!(
-                "Failed to retrieve transaction data for tx_id: {}: {:?}",
+                "Failed to retrieve transaction data for txid: {}: {:?}",
                 tx.location.tx_id, err
             ));
         }

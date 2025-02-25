@@ -2,6 +2,7 @@ use anyhow::Result;
 use base64::engine::general_purpose::{self, STANDARD as BASE64_ENGINE};
 use base64::Engine;
 use p256::ecdsa::{signature::Signer, Signature, SigningKey};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs};
@@ -15,7 +16,14 @@ lazy_static::lazy_static! {
     static ref FORDEFI_DEPOSIT_VAULT_ID: String = env::var("FORDEFI_DEPOSIT_VAULT_ID").expect("FORDEFI_DEPOSIT_VAULT_ID must be set");
 }
 
-pub async fn send_fordefi_request(claim_data: FordefiDepositData) -> Result<()> {
+#[derive(Deserialize)]
+struct FordefiResponse {
+    id: String,
+    #[serde(skip)]
+    _rest: serde::de::IgnoredAny,
+}
+
+pub async fn send_fordefi_request(claim_data: FordefiDepositData) -> Result<String> {
     let raw_data = if let Ok(raw_data) = get_raw_data(claim_data.hashed_value.to_fixed_hex_string())
     {
         raw_data
@@ -68,7 +76,8 @@ pub async fn send_fordefi_request(claim_data: FordefiDepositData) -> Result<()> 
     match res {
         Ok(response) => {
             if response.status().is_success() {
-                Ok(())
+                let response_data = response.json::<FordefiResponse>().await?;
+                Ok(response_data.id)
             } else {
                 Err(anyhow::anyhow!(format!(
                     "Request failed with status code: {} and response {}",
