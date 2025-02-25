@@ -1,3 +1,4 @@
+use core::f64;
 use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Result;
@@ -16,6 +17,7 @@ use crate::{
     utils::{
         calldata::get_transaction_struct_felt,
         fordefi::send_fordefi_request,
+        runes::get_rune_details,
         runes::get_supported_runes_vec,
         starknet::{compute_hashed_value, compute_rune_contract},
     },
@@ -97,15 +99,12 @@ pub async fn process_block(
                             .is_deposit_addr(&mut session, receiver_address.clone())
                             .await
                         {
-                            let rune_symbol = if let Some(rune) = runes_mapping.get(&tx.rune.id) {
-                                rune.symbol.clone()
-                            } else {
-                                tx.rune.name.clone()
-                            };
+                            let (rune_symbol, rune_divisibility, amount) =
+                                get_rune_details(&tx, &runes_mapping);
                             state.logger.info(format!(
                                 "Processing {} | {} x {}",
                                 tx.location.tx_id,
-                                tx.amount.clone().unwrap_or("0".to_string()),
+                                (amount as f64) / (10_f64.powi(rune_divisibility as i32)),
                                 rune_symbol
                             ));
 
