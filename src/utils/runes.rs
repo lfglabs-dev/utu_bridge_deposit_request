@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    models::runes::RuneDetail,
+    models::{hiro::BlockActivityResult, runes::RuneDetail},
     state::{database::DatabaseExt, AppState},
 };
 use anyhow::Result;
@@ -66,4 +66,23 @@ pub async fn log_supported_runes(state: &Arc<AppState>) -> Result<()> {
     state.logger.info(formatted_runes);
 
     Ok(())
+}
+
+pub fn get_rune_details(
+    tx: &BlockActivityResult,
+    runes_mapping: &HashMap<String, RuneDetail>,
+) -> (String, u64, f64) {
+    let (rune_symbol, rune_divisibility) = if let Some(rune) = runes_mapping.get(&tx.rune.id) {
+        (rune.symbol.clone(), rune.divisibility)
+    } else {
+        (tx.rune.name.clone(), 0)
+    };
+
+    let amount: f64 = if let Some(amount) = tx.amount.clone() {
+        amount.parse::<f64>().unwrap_or(0.0)
+    } else {
+        0.0
+    };
+
+    (rune_symbol, rune_divisibility, amount)
 }
