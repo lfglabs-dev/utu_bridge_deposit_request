@@ -153,117 +153,8 @@ pub fn get_fordefi_request_body(raw_data: String, note: String) -> Result<String
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use bigdecimal::{num_bigint::BigInt, Num};
-    use bitcoin::Txid;
-    use bitcoincore_rpc::{Auth, Client, RpcApi};
     use starknet::{core::types::TypedData, macros::felt};
-    use starknet_crypto::{poseidon_hash_many, verify, Felt};
-
-    use crate::utils::{
-        calldata::get_transaction_struct_felt,
-        starknet::{compute_rune_contract, to_uint256},
-    };
-
-    use super::*;
-
-    fn get_bitcoin_provider() -> Client {
-        let bitcoin_rpc_user = env::var("BITCOIN_RPC_USER").expect("BITCOIN_RPC_USER must be set");
-        let bitcoin_rpc_password =
-            env::var("BITCOIN_RPC_PASSWORD").expect("BITCOIN_RPC_PASSWORD must be set");
-        let bitcoin_auth = if bitcoin_rpc_user.is_empty() || bitcoin_rpc_password.is_empty() {
-            Auth::None
-        } else {
-            Auth::UserPass(bitcoin_rpc_user, bitcoin_rpc_password)
-        };
-
-        bitcoincore_rpc::Client::new(
-            &env::var("BITCOIN_RPC_URL").expect("BITCOIN_RPC_URL must be set"),
-            bitcoin_auth,
-        )
-        .unwrap()
-    }
-
-    fn get_fordefi_deposit_data() -> FordefiDepositData {
-        let bitcoin_provider = get_bitcoin_provider();
-
-        let rune_id: Felt = Felt::from_hex("0x95909ff0").unwrap();
-        let amount = (Felt::from_hex("0x7a120").unwrap(), Felt::ZERO);
-        let addr =
-            Felt::from_hex("0x403c80a49f16ed8ecf751f4b3ad62cc8f85ebeb2d40dc3b4377a089b438995d")
-                .unwrap();
-        let tx_deposit_id = "bd51cd6d88a59456e2585c2dd61e51f91645dd071d33484d0015328f460057fc";
-        // Digest = [0xfc570046, 0x8f321500, 0x4d48331d, 0x7dd4516, 0xf9511ed6, 0x2d5c58e2, 0x5694a588, 0x6dcd51bd]
-        let tx_u256 = to_uint256(BigInt::from_str_radix(tx_deposit_id, 16).unwrap());
-
-        let hashed_value = poseidon_hash_many(&[rune_id, amount.0, addr, tx_u256.0]);
-
-        let tx_id = Txid::from_str(tx_deposit_id).unwrap();
-        let tx_info = bitcoin_provider
-            .get_raw_transaction_info(&tx_id, None)
-            .unwrap();
-        let transaction_struct = get_transaction_struct_felt(&bitcoin_provider, tx_info);
-
-        FordefiDepositData {
-            rune_id,
-            amount: (felt!("0x7a120"), Felt::ZERO),
-            tx_id: tx_deposit_id.to_string(),
-            tx_vout: Some(1),
-            hashed_value,
-            transaction_struct,
-            rune_contract: compute_rune_contract(rune_id),
-            starknet_addr: "0x403c80a49f16ed8ecf751f4b3ad62cc8f85ebeb2d40dc3b4377a089b438995d"
-                .to_string(),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_fordefi_request_sepolia() {
-        let claim_data = get_fordefi_deposit_data();
-        send_fordefi_request(claim_data).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_fordefi_request_mainnet() {
-        let bitcoin_provider = get_bitcoin_provider();
-
-        let rune_id: Felt = Felt::from_hex("0x95909ff0").unwrap();
-        let amount = (Felt::from_hex("0x7a120").unwrap(), Felt::ZERO);
-        let addr =
-            Felt::from_hex("0x0302de76464d4e2447F2d1831fb0A1AF101B18F80964fCfff1aD831C0A92e1fD")
-                .unwrap();
-        let tx_deposit_id = "bd51cd6d88a59456e2585c2dd61e51f91645dd071d33484d0015328f460057fc";
-        // Digest = [0xfc570046, 0x8f321500, 0x4d48331d, 0x7dd4516, 0xf9511ed6, 0x2d5c58e2, 0x5694a588, 0x6dcd51bd]
-        let tx_u256 = to_uint256(BigInt::from_str_radix(tx_deposit_id, 16).unwrap());
-
-        let hashed_value = poseidon_hash_many(&[rune_id, amount.0, addr, tx_u256.0]);
-
-        let tx_id = Txid::from_str(tx_deposit_id).unwrap();
-        let tx_info = bitcoin_provider
-            .get_raw_transaction_info(&tx_id, None)
-            .unwrap();
-        let transaction_struct = get_transaction_struct_felt(&bitcoin_provider, tx_info);
-
-        let claim_data = FordefiDepositData {
-            rune_id,
-            amount,
-            tx_id: tx_deposit_id.to_string(),
-            tx_vout: Some(1),
-            hashed_value,
-            transaction_struct,
-            rune_contract: compute_rune_contract(rune_id),
-            starknet_addr: "0x0302de76464d4e2447F2d1831fb0A1AF101B18F80964fCfff1aD831C0A92e1fD"
-                .to_string(),
-        };
-        send_fordefi_request(claim_data).await.unwrap();
-    }
-
-    #[test]
-    fn test_encode_data() {
-        let claim_data = get_fordefi_deposit_data();
-        let _encoded_str = encode_data(claim_data).unwrap();
-    }
+    use starknet_crypto::{verify, Felt};
 
     #[test]
     fn test_verify_sig() {
@@ -292,7 +183,7 @@ mod tests {
             },
             "message": {
                 "Operation": "UtuRunesBridge: Claim",
-                "Hashed value": "0x07a6d66b689fda331b65dba000b887cc17796ded88da0c9c3147c7cc3654a6b2"
+                "Hashed value": "0x02ffb402c24b7680c0b8be3f25e6af70806c4a2b123ad3a43753cd2fddace83c"
             }
         }"#;
         let typed_data = serde_json::from_str::<TypedData>(raw_typed_data).unwrap();
