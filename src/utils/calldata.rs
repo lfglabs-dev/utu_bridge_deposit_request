@@ -170,14 +170,11 @@ pub fn hex_to_hash_rev(tx_id: Option<bitcoin::Txid>) -> Vec<Felt> {
 }
 
 pub fn hex_char_to_nibble(hex_char: u8) -> u8 {
-    if hex_char >= b'0' && hex_char <= b'9' {
-        hex_char - b'0'
-    } else if hex_char >= b'A' && hex_char <= b'F' {
-        hex_char - b'A' + 10
-    } else if hex_char >= b'a' && hex_char <= b'f' {
-        hex_char - b'a' + 10
-    } else {
-        panic!("Invalid hex character: {}", hex_char as char);
+    match hex_char {
+        b'0'..=b'9' => hex_char - b'0',
+        b'A'..=b'F' => hex_char - b'A' + 10,
+        b'a'..=b'f' => hex_char - b'a' + 10,
+        _ => panic!("Invalid hex character: {}", hex_char as char),
     }
 }
 

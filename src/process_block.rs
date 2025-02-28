@@ -1,4 +1,3 @@
-use core::f64;
 use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Result;
@@ -104,7 +103,7 @@ pub async fn process_block(
                             state.logger.info(format!(
                                 "Processing {} | {} x {}",
                                 tx.location.tx_id,
-                                (amount as f64) / (10_f64.powi(rune_divisibility as i32)),
+                                amount / (10_f64.powi(rune_divisibility as i32)),
                                 rune_symbol
                             ));
 
@@ -168,22 +167,18 @@ pub async fn process_block(
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    if main_loop {
+    if main_loop || tx_found {
         Ok(())
     } else {
-        if tx_found {
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!(format!(
-                "Unable to find any matching deposits in block: {}",
-                block_hash
-            )))
-        }
+        Err(anyhow::anyhow!(format!(
+            "Unable to find any matching deposits in block: {}",
+            block_hash
+        )))
     }
 }
 
 /// Determines if the transaction is a valid Receive operation.
-pub fn is_valid_receive_operation(tx: &BlockActivityResult, supported_runes: &Vec<String>) -> bool {
+pub fn is_valid_receive_operation(tx: &BlockActivityResult, supported_runes: &[String]) -> bool {
     tx.operation == Operation::Receive
         && tx.address.is_some()
         && supported_runes.contains(&tx.rune.id)
