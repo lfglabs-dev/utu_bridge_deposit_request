@@ -98,13 +98,10 @@ pub async fn process_block(
                             .is_deposit_addr(&mut session, receiver_address.clone())
                             .await
                         {
-                            let (rune_symbol, rune_divisibility, amount) =
-                                get_rune_details(&tx, &runes_mapping);
+                            let (rune_symbol, _, amount) = get_rune_details(&tx, &runes_mapping);
                             state.logger.info(format!(
                                 "Processing {} | {} x {}",
-                                tx.location.tx_id,
-                                amount / (10_f64.powi(rune_divisibility as i32)),
-                                rune_symbol
+                                tx.location.tx_id, amount, rune_symbol
                             ));
 
                             // We process the deposit transaction and add it to the queue
@@ -122,10 +119,6 @@ pub async fn process_block(
                                     tx.location.tx_id, e
                                 ));
                             } else {
-                                // state.logger.info(format!(
-                                //     "Processed deposit transaction for tx_id: {}",
-                                //     tx.location.tx_id
-                                // ));
                                 tx_found = true;
                             }
                         }
