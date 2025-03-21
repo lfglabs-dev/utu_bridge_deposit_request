@@ -1,7 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    models::{hiro::BlockActivityResult, runes::RuneDetail},
+    models::{
+        hiro::BlockActivityResult,
+        runes::{RuneDetail, RuneId},
+    },
     state::{database::DatabaseExt, AppState},
 };
 use anyhow::Result;
@@ -28,10 +31,14 @@ pub async fn get_supported_runes_vec(
 
     for rune in &supported_runes_array {
         supported_runes.push(rune.id.clone());
+        let rune_id = RuneId {
+            block: rune.id.split(":").next().unwrap().parse::<u64>().unwrap(),
+            tx: rune.id.split(":").nth(1).unwrap().parse::<u32>().unwrap(),
+        };
         rune_map.insert(
             rune.id.clone(),
             RuneDetail {
-                symbol: rune.symbol.clone(),
+                rune_id,
                 divisibility: rune.divisibility,
             },
         );
@@ -71,12 +78,12 @@ pub async fn log_supported_runes(state: &Arc<AppState>) -> Result<()> {
 pub fn get_rune_details(
     tx: &BlockActivityResult,
     runes_mapping: &HashMap<String, RuneDetail>,
-) -> (String, u64, f64) {
-    let (rune_symbol, rune_divisibility) = if let Some(rune) = runes_mapping.get(&tx.rune.id) {
-        (rune.symbol.clone(), rune.divisibility)
-    } else {
-        (tx.rune.name.clone(), 0)
-    };
+) -> Result<(RuneId, u64, f64)> {
+    let rune = runes_mapping.get(&tx.rune.id);
+    if rune.is_none() {
+        return Err(anyhow::anyhow!("Rune not found: {}", tx.rune.id));
+    }
+    let rune = rune.unwrap();
 
     let amount: f64 = if let Some(amount) = tx.amount.clone() {
         amount.parse::<f64>().unwrap_or(0.0)
@@ -84,5 +91,5 @@ pub fn get_rune_details(
         0.0
     };
 
-    (rune_symbol, rune_divisibility, amount)
+    Ok((rune.rune_id.clone(), rune.divisibility, amount))
 }
