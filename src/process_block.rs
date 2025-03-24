@@ -77,7 +77,7 @@ pub async fn process_block(
 
                 if block_activity.total == 0 && attempts < max_attempts {
                     // block wasn't indexed yet by hiro, so we wait refetch it until we have a result
-                    sleep(Duration::from_secs(1)).await;
+                    sleep(Duration::from_millis(*HIRO_TIMEOUT_MS)).await;
                     continue;
                 }
 
