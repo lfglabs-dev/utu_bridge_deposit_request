@@ -43,6 +43,17 @@ pub async fn process_tx_query(
     State(state): State<Arc<AppState>>,
     body: Json<ProcessTxQuery>,
 ) -> impl IntoResponse {
+    // Validate transaction ID format
+    if !is_valid_tx_id(&body.tx_id) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::new(
+                Status::BadRequest,
+                "Invalid transaction ID format. Must contain only hex characters (0-9, a-f, A-F).",
+            )),
+        );
+    }
+
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
         Err(_) => {
@@ -169,4 +180,16 @@ async fn process_tx(
     Err(anyhow::anyhow!(
         "Failed to process transaction. Unable to find a matching deposit."
     ))
+}
+
+/// Validates a Bitcoin transaction ID
+/// Returns true if the transaction ID is valid (contains only hex characters and is at least 1 character long)
+fn is_valid_tx_id(tx_id: &str) -> bool {
+    // Check if the string is empty
+    if tx_id.is_empty() {
+        return false;
+    }
+
+    // Check if all characters are valid hex characters (0-9, a-f, A-F)
+    tx_id.chars().all(|c| c.is_ascii_hexdigit())
 }
