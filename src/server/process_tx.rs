@@ -43,17 +43,6 @@ pub async fn process_tx_query(
     State(state): State<Arc<AppState>>,
     body: Json<ProcessTxQuery>,
 ) -> impl IntoResponse {
-    // Validate transaction ID format
-    if !is_valid_tx_id(&body.tx_id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiResponse::new(
-                Status::BadRequest,
-                "Invalid transaction ID format. Must contain only hex characters (0-9, a-f, A-F).",
-            )),
-        );
-    }
-
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
         Err(_) => {
@@ -100,6 +89,13 @@ async fn process_tx(
     session: &mut ClientSession,
     tx_id: String,
 ) -> Result<()> {
+    // Validate transaction ID format
+    if !is_valid_tx_id(&tx_id) {
+        return Err(anyhow::anyhow!(
+            "Invalid transaction ID format. Must contain only hex characters (0-9, a-f, A-F)."
+        ));
+    }
+
     let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
 
     // Fetch transaction details and parse all activities
