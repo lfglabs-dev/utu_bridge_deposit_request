@@ -98,10 +98,10 @@ pub async fn process_block(
                             .is_deposit_addr(&mut session, receiver_address.clone())
                             .await
                         {
-                            let (rune_symbol, _, amount) = get_rune_details(&tx, &runes_mapping);
+                            let (rune_id, _, amount) = get_rune_details(&tx, &runes_mapping)?;
                             state.logger.info(format!(
-                                "Processing {} | {} x {}",
-                                tx.location.tx_id, amount, rune_symbol
+                                "Processing {} | {} x {}:{}",
+                                tx.location.tx_id, amount, rune_id.block, rune_id.tx
                             ));
 
                             // We process the deposit transaction and add it to the queue
@@ -186,7 +186,7 @@ pub async fn process_deposit_transaction(
     runes_mapping: &HashMap<String, RuneDetail>,
 ) -> Result<()> {
     // Compute hash_value needed for fordefi signature
-    let (hashed_value, rune_id_felt, amount_u256) =
+    let (hashed_value, rune_id_block_felt, rune_id_tx_felt, amount_u256) =
         if let Ok(hashed_value) = compute_hashed_value(runes_mapping, tx.clone(), starknet_addr) {
             hashed_value
         } else {
@@ -201,13 +201,14 @@ pub async fn process_deposit_transaction(
 
             // we send the deposit request to fordefi
             let deposit_data = FordefiDepositData {
-                rune_id: rune_id_felt,
+                rune_id_block: rune_id_block_felt,
+                rune_id_tx: rune_id_tx_felt,
                 amount: amount_u256,
                 hashed_value,
                 tx_id: tx.clone().location.tx_id,
                 tx_vout: tx.location.vout,
                 transaction_struct,
-                rune_contract: compute_rune_contract(rune_id_felt),
+                rune_contract: compute_rune_contract(rune_id_block_felt, rune_id_tx_felt),
                 starknet_addr: starknet_addr.to_string(),
             };
 
