@@ -11,6 +11,7 @@ use crate::process_block::{is_valid_receive_operation, process_deposit_transacti
 use crate::server::responses::{ApiResponse, Status};
 use crate::state::database::DatabaseExt;
 use crate::state::AppState;
+use crate::utils::general::is_valid_tx_id;
 use crate::utils::runes::get_supported_runes_vec;
 use axum::extract::State;
 use axum::response::IntoResponse;
@@ -176,16 +177,4 @@ async fn process_tx(
     Err(anyhow::anyhow!(
         "Failed to process transaction. Unable to find a matching deposit."
     ))
-}
-
-/// Validates a Bitcoin transaction ID
-/// Returns true if the transaction ID is valid (contains only hex characters and is at least 1 character long)
-fn is_valid_tx_id(tx_id: &str) -> bool {
-    // Check if the string is empty
-    if tx_id.is_empty() {
-        return false;
-    }
-
-    // Check if all characters are valid hex characters (0-9, a-f, A-F)
-    tx_id.chars().all(|c| c.is_ascii_hexdigit())
 }
