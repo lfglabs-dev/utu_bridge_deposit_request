@@ -23,6 +23,7 @@ jobs:
       with:
         fetch-depth: 1  # Shallow clone for faster checkout
         submodules: recursive  # Add this to fetch submodules
+        token: ${{ secrets.GH_PAT }}  # Use a personal access token with repo scope
 
     - run: curl -sfS https://dotenvx.sh/install.sh | sh
 
