@@ -25,7 +25,6 @@ use crate::{
 lazy_static::lazy_static! {
     static ref HIRO_API_URL: String = env::var("HIRO_API_URL").expect("HIRO_API_URL must be set");
     static ref HIRO_API_KEY: String = env::var("HIRO_API_KEY").expect("HIRO_API_KEY must be set");
-    static ref UTU_API_URL: String = env::var("UTU_API_URL").expect("UTU_API_URL must be set");
     static ref HIRO_TIMEOUT_MS: u64 = env::var("HIRO_TIMEOUT_MS").expect("HIRO_TIMEOUT_MS must be set").parse::<u64>().expect("HIRO_TIMEOUT_MS must be a valid u64");
     static ref HTTP_CLIENT: Client = Client::builder()
         .timeout(Duration::from_secs(10))
@@ -77,7 +76,7 @@ pub async fn process_block(
 
                 if block_activity.total == 0 && attempts < max_attempts {
                     // block wasn't indexed yet by hiro, so we wait refetch it until we have a result
-                    sleep(Duration::from_secs(1)).await;
+                    sleep(Duration::from_millis(*HIRO_TIMEOUT_MS)).await;
                     continue;
                 }
 
@@ -98,13 +97,10 @@ pub async fn process_block(
                             .is_deposit_addr(&mut session, receiver_address.clone())
                             .await
                         {
-                            let (rune_symbol, rune_divisibility, amount) =
-                                get_rune_details(&tx, &runes_mapping);
+                            let (rune_id, _, amount) = get_rune_details(&tx, &runes_mapping)?;
                             state.logger.info(format!(
-                                "Processing {} | {} x {}",
-                                tx.location.tx_id,
-                                amount / (10_f64.powi(rune_divisibility as i32)),
-                                rune_symbol
+                                "Processing {} | {} x {}:{}",
+                                tx.location.tx_id, amount, rune_id.block, rune_id.tx
                             ));
 
                             // We process the deposit transaction and add it to the queue
@@ -122,10 +118,6 @@ pub async fn process_block(
                                     tx.location.tx_id, e
                                 ));
                             } else {
-                                // state.logger.info(format!(
-                                //     "Processed deposit transaction for tx_id: {}",
-                                //     tx.location.tx_id
-                                // ));
                                 tx_found = true;
                             }
                         }
@@ -193,7 +185,7 @@ pub async fn process_deposit_transaction(
     runes_mapping: &HashMap<String, RuneDetail>,
 ) -> Result<()> {
     // Compute hash_value needed for fordefi signature
-    let (hashed_value, rune_id_felt, amount_u256) =
+    let (hashed_value, rune_id_block_felt, rune_id_tx_felt, amount_u256) =
         if let Ok(hashed_value) = compute_hashed_value(runes_mapping, tx.clone(), starknet_addr) {
             hashed_value
         } else {
@@ -208,13 +200,14 @@ pub async fn process_deposit_transaction(
 
             // we send the deposit request to fordefi
             let deposit_data = FordefiDepositData {
-                rune_id: rune_id_felt,
+                rune_id_block: rune_id_block_felt,
+                rune_id_tx: rune_id_tx_felt,
                 amount: amount_u256,
                 hashed_value,
                 tx_id: tx.clone().location.tx_id,
                 tx_vout: tx.location.vout,
                 transaction_struct,
-                rune_contract: compute_rune_contract(rune_id_felt),
+                rune_contract: compute_rune_contract(rune_id_block_felt, rune_id_tx_felt),
                 starknet_addr: starknet_addr.to_string(),
             };
 

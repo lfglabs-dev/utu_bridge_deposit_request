@@ -18,5 +18,11 @@ pub struct SupportedRuneDocument {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuneDetail {
     pub divisibility: u64,
-    pub symbol: String,
+    pub rune_id: RuneId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuneId {
+    pub block: u64,
+    pub tx: u32,
 }

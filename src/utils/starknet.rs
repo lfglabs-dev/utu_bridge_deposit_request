@@ -22,7 +22,7 @@ pub fn compute_hashed_value(
     runes_mapping: &HashMap<String, RuneDetail>,
     tx_data: BlockActivityResult,
     starknet_addr: &str,
-) -> Result<(Felt, Felt, (Felt, Felt))> {
+) -> Result<(Felt, Felt, Felt, (Felt, Felt))> {
     //  Fetch supported rune
     let rune_details = runes_mapping.get(&tx_data.clone().rune.id);
     if rune_details.is_none() {
@@ -31,8 +31,10 @@ pub fn compute_hashed_value(
             tx_data.clone().rune.id
         )));
     }
+
     let rune_details = rune_details.unwrap();
-    let rune_id: Felt = symbol_as_felt(&rune_details.symbol);
+    let rune_id_block = Felt::from_dec_str(&rune_details.rune_id.block.to_string())?;
+    let rune_id_tx = Felt::from_dec_str(&rune_details.rune_id.tx.to_string())?;
 
     let amount = if let Some(amount) = tx_data.clone().amount {
         amount
@@ -65,22 +67,15 @@ pub fn compute_hashed_value(
 
     let starknet_addr = Felt::from_hex(starknet_addr)?;
 
-    let hashed_value = poseidon_hash_many(&[rune_id, amount_felt.0, starknet_addr, tx_id_felt.0]);
+    let hashed_value = poseidon_hash_many(&[
+        rune_id_block,
+        rune_id_tx,
+        amount_felt.0,
+        starknet_addr,
+        tx_id_felt.0,
+    ]);
 
-    Ok((hashed_value, rune_id, amount_felt))
-}
-
-pub fn symbol_as_felt(symbol: &str) -> Felt {
-    let bytes = symbol.as_bytes();
-    let mut rune_id_felt: u128 = 0;
-    let mut shift_amount: u128 = 1;
-
-    for &byte in bytes.iter() {
-        rune_id_felt += (byte as u128) * shift_amount;
-        shift_amount *= 256;
-    }
-
-    Felt::from(rune_id_felt)
+    Ok((hashed_value, rune_id_block, rune_id_tx, amount_felt))
 }
 
 pub fn convert_to_bigint(amount: &str, divisibility: u64) -> Result<BigInt> {
@@ -117,12 +112,12 @@ pub fn hex_to_uint256(hex_str: &str) -> Result<(Felt, Felt)> {
     ))
 }
 
-pub fn compute_rune_contract(rune_id: Felt) -> Felt {
+pub fn compute_rune_contract(rune_id_block: Felt, rune_id_tx: Felt) -> Felt {
     get_udc_deployed_address(
         Felt::ZERO,
         *SAG_CLASS_HASH,
         &UdcUniqueness::NotUnique,
-        &[rune_id],
+        &[rune_id_block, rune_id_tx],
     )
 }
 
@@ -142,19 +137,23 @@ pub fn to_uint256(n: BigInt) -> (Felt, Felt) {
 mod tests {
     use starknet::macros::felt;
 
+    use crate::models::runes::RuneId;
+
     use super::*;
 
     #[test]
     fn test_compute_rune_contract() {
-        let symbol = "🐕";
-        let symbol_felt = symbol_as_felt(symbol);
-        let expected_symbol = Felt::from_dec_str("2509283312").unwrap();
-        assert_eq!(symbol_felt, expected_symbol);
+        let rune_id = RuneId {
+            block: 840000,
+            tx: 3,
+        };
 
         let expected_contract_addr =
-            Felt::from_hex("0x01c8C5847aE848Eabf909515338e74DADBC724f54C7735851c57eCfdF1319143")
-                .unwrap();
-        let computed_contract_addr = compute_rune_contract(symbol_felt);
+            felt!("0x3aa494a87f541ad671a41d2fa8f0e8cd05485e1b45b6584979b8e673acd0e73");
+        let computed_contract_addr = compute_rune_contract(
+            Felt::from_dec_str(&rune_id.block.to_string()).unwrap(),
+            Felt::from_dec_str(&rune_id.tx.to_string()).unwrap(),
+        );
         assert_eq!(computed_contract_addr, expected_contract_addr);
     }
 
