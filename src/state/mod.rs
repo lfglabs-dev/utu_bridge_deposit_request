@@ -6,6 +6,7 @@ use thiserror::Error;
 use axum::{body::Body, Router};
 use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
+use utu_bridge_types::bitcoin::BitcoinAddress;
 
 use crate::logger::Logger;
 
@@ -37,7 +38,7 @@ pub struct AppState {
     pub bitcoin_provider: Client,
     pub blocks: RwLock<BlocksState>,
     pub notifier: Notify,
-    pub blacklisted_deposit_addr: Vec<String>,
+    pub blacklisted_deposit_addr: Vec<BitcoinAddress>,
 }
 
 pub struct BlocksState {

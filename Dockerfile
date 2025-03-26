@@ -15,6 +15,9 @@ RUN curl -L -o dotenvx.tar.gz "https://github.com/dotenvx/dotenvx/releases/lates
 COPY Cargo.toml Cargo.lock .env .env.production .
 COPY src ./src
 
+# todo: remove when made public
+COPY ./utu_bridge_types ./utu_bridge_types
+
 RUN if [ "$CONTAINER_ENV" = "prod" ]; then \
         cargo build --release; \
     else \
