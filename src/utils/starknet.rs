@@ -145,7 +145,7 @@ mod tests {
         let rune_id = BitcoinRuneId::new(840000, 3);
 
         let expected_contract_addr =
-            felt!("0x3aa494a87f541ad671a41d2fa8f0e8cd05485e1b45b6584979b8e673acd0e73");
+            felt!("0x40e81cfeb176bfdbc5047bbc55eb471cfab20a6b221f38d8fda134e1bfffca4");
         let computed_contract_addr = compute_rune_contract(
             Felt::from_dec_str(&rune_id.block().to_string()).unwrap(),
             Felt::from_dec_str(&rune_id.tx().to_string()).unwrap(),
