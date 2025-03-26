@@ -18,7 +18,7 @@ use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
 use axum_auto_routes::route;
-use bitcoin::BlockHash;
+use bitcoin::{BlockHash, Network};
 use mongodb::bson::doc;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,7 @@ async fn process_tx(
         for tx in tx_activity.results {
             if is_valid_receive_operation(&tx, &supported_runes) {
                 let receiver_address = tx.address.clone().unwrap();
-                let receiver_address = BitcoinAddress::new(&receiver_address)?;
+                let receiver_address = BitcoinAddress::new(&receiver_address, Network::Bitcoin)?;
 
                 // Check if the received_address is part of our deposit addresses
                 if let Ok(starknet_addr) = state

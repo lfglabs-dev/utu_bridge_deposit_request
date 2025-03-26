@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Result;
-use bitcoin::{BlockHash, Txid};
+use bitcoin::{BlockHash, Network, Txid};
 use bitcoincore_rpc::{json::GetRawTransactionResult, RpcApi};
 use reqwest::Client;
 use tokio::time::sleep;
@@ -90,7 +90,8 @@ pub async fn process_block(
                     // and rune_id is in supported_runes
                     if is_valid_receive_operation(&tx, &supported_runes) {
                         let receiver_address = tx.address.clone().unwrap();
-                        let receiver_address = BitcoinAddress::new(&receiver_address)?;
+                        let receiver_address =
+                            BitcoinAddress::new(&receiver_address, Network::Bitcoin)?;
 
                         if state.blacklisted_deposit_addr.contains(&receiver_address) {
                             continue;

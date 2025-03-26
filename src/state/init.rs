@@ -1,5 +1,6 @@
 use std::{env, sync::Arc};
 
+use bitcoin::Network;
 use bitcoincore_rpc::Auth;
 use mongodb::options::ClientOptions;
 use tokio::sync::{Notify, RwLock};
@@ -54,6 +55,7 @@ impl AppStateTraitInitializer for AppState {
                 BitcoinAddress::new(
                     &env::var(format!("BLACKLISTED_DEPOSIT_ADDR_{}", i))
                         .unwrap_or_else(|_| panic!("BLACKLISTED_DEPOSIT_ADDR_{} must be set", i)),
+                    Network::Bitcoin,
                 )
                 .unwrap_or_else(|_| {
                     panic!(
