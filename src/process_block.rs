@@ -5,12 +5,15 @@ use bitcoin::{BlockHash, Txid};
 use bitcoincore_rpc::{json::GetRawTransactionResult, RpcApi};
 use reqwest::Client;
 use tokio::time::sleep;
+use utu_bridge_types::{
+    bitcoin::{BitcoinAddress, BitcoinRuneId},
+    starknet::StarknetAddress,
+};
 
 use crate::{
     models::{
         claim::FordefiDepositData,
         hiro::{BlockActivity, BlockActivityResult, Operation},
-        runes::RuneDetail,
     },
     state::{database::DatabaseExt, AppState},
     utils::{
@@ -87,6 +90,7 @@ pub async fn process_block(
                     // and rune_id is in supported_runes
                     if is_valid_receive_operation(&tx, &supported_runes) {
                         let receiver_address = tx.address.clone().unwrap();
+                        let receiver_address = BitcoinAddress::new(&receiver_address)?;
 
                         if state.blacklisted_deposit_addr.contains(&receiver_address) {
                             continue;
@@ -101,7 +105,10 @@ pub async fn process_block(
                             let (rune_id, _, amount) = get_rune_details(&tx, &runes_mapping)?;
                             state.logger.info(format!(
                                 "Processing {} | {} x {}:{}",
-                                tx.location.tx_id, amount, rune_id.block, rune_id.tx
+                                tx.location.tx_id,
+                                amount,
+                                rune_id.block(),
+                                rune_id.tx()
                             ));
 
                             // We process the deposit transaction and add it to the queue
@@ -171,19 +178,22 @@ pub async fn process_block(
 }
 
 /// Determines if the transaction is a valid Receive operation.
-pub fn is_valid_receive_operation(tx: &BlockActivityResult, supported_runes: &[String]) -> bool {
+pub fn is_valid_receive_operation(
+    tx: &BlockActivityResult,
+    supported_runes: &[BitcoinRuneId],
+) -> bool {
     tx.operation == Operation::Receive
         && tx.address.is_some()
-        && supported_runes.contains(&tx.rune.id)
+        && supported_runes.contains(&BitcoinRuneId::from_str(&tx.rune.id).unwrap())
 }
 
 /// Processes a valid deposit transaction.
 pub async fn process_deposit_transaction(
     state: &Arc<AppState>,
     tx: &BlockActivityResult,
-    starknet_addr: &String,
+    starknet_addr: &StarknetAddress,
     block_hash: &BlockHash,
-    runes_mapping: &HashMap<String, RuneDetail>,
+    runes_mapping: &HashMap<BitcoinRuneId, u32>,
 ) -> Result<()> {
     // Compute hash_value needed for fordefi signature
     let (hashed_value, rune_id_block_felt, rune_id_tx_felt, amount_u256) =
@@ -205,7 +215,7 @@ pub async fn process_deposit_transaction(
                 rune_id_tx: rune_id_tx_felt,
                 amount: amount_u256,
                 hashed_value,
-                tx_id: tx.clone().location.tx_id,
+                tx_id: tx.location.tx_id.clone(),
                 tx_vout: tx.location.vout,
                 transaction_struct,
                 rune_contract: compute_rune_contract(rune_id_block_felt, rune_id_tx_felt),
