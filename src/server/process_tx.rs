@@ -11,6 +11,7 @@ use crate::process_block::{is_valid_receive_operation, process_deposit_transacti
 use crate::server::responses::{ApiResponse, Status};
 use crate::state::database::DatabaseExt;
 use crate::state::AppState;
+use crate::utils::general::is_valid_tx_id;
 use crate::utils::runes::get_supported_runes_vec;
 use axum::extract::State;
 use axum::response::IntoResponse;
@@ -89,6 +90,13 @@ async fn process_tx(
     session: &mut ClientSession,
     tx_id: String,
 ) -> Result<()> {
+    // Validate transaction ID format
+    if !is_valid_tx_id(&tx_id) {
+        return Err(anyhow::anyhow!(
+            "Invalid transaction ID format. Must contain only hex characters (0-9, a-f, A-F)."
+        ));
+    }
+
     let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
 
     // Fetch transaction details and parse all activities
