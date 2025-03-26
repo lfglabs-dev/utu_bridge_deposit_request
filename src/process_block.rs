@@ -25,7 +25,6 @@ use crate::{
 lazy_static::lazy_static! {
     static ref HIRO_API_URL: String = env::var("HIRO_API_URL").expect("HIRO_API_URL must be set");
     static ref HIRO_API_KEY: String = env::var("HIRO_API_KEY").expect("HIRO_API_KEY must be set");
-    static ref UTU_API_URL: String = env::var("UTU_API_URL").expect("UTU_API_URL must be set");
     static ref HIRO_TIMEOUT_MS: u64 = env::var("HIRO_TIMEOUT_MS").expect("HIRO_TIMEOUT_MS must be set").parse::<u64>().expect("HIRO_TIMEOUT_MS must be a valid u64");
     static ref HTTP_CLIENT: Client = Client::builder()
         .timeout(Duration::from_secs(10))
