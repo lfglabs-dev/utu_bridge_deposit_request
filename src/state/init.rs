@@ -1,8 +1,10 @@
 use std::{env, sync::Arc};
 
+use bitcoin::Network;
 use bitcoincore_rpc::Auth;
 use mongodb::options::ClientOptions;
 use tokio::sync::{Notify, RwLock};
+use utu_bridge_types::bitcoin::BitcoinAddress;
 
 use crate::{
     logger::Logger,
@@ -47,11 +49,20 @@ impl AppStateTraitInitializer for AppState {
             .expect("BLACKLISTED_DEPOSIT_ADDR_LEN must be set")
             .parse::<u64>()
             .expect("BLACKLISTED_DEPOSIT_ADDR_LEN must be a valid u64");
-        let mut blacklisted_deposit_addr: Vec<String> = Vec::new();
+        let mut blacklisted_deposit_addr: Vec<BitcoinAddress> = Vec::new();
         for i in 0..blacklisted_deposit_addr_len {
             blacklisted_deposit_addr.push(
-                env::var(format!("BLACKLISTED_DEPOSIT_ADDR_{}", i))
-                    .unwrap_or_else(|_| panic!("BLACKLISTED_DEPOSIT_ADDR_{} must be set", i)),
+                BitcoinAddress::new(
+                    &env::var(format!("BLACKLISTED_DEPOSIT_ADDR_{}", i))
+                        .unwrap_or_else(|_| panic!("BLACKLISTED_DEPOSIT_ADDR_{} must be set", i)),
+                    Network::Bitcoin,
+                )
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "BLACKLISTED_DEPOSIT_ADDR_{} is not a valid bitcoin address",
+                        i
+                    )
+                }),
             );
         }
 

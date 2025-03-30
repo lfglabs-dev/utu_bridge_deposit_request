@@ -1,0 +1,3 @@
+[submodule "utu_bridge_types"]
+	path = utu_bridge_types
+	url = https://github.com/lfglabs-dev/utu_bridge_types
