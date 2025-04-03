@@ -83,7 +83,7 @@ pub fn convert_to_bigint(amount: &str, divisibility: u32) -> Result<BigInt> {
     let decimal_amount = Decimal::from_str(amount)?;
 
     // Calculate the multiplicative factor from divisibility
-    let factor = Decimal::from_i64(10_i64.pow(divisibility as u32))
+    let factor = Decimal::from_i64(10_i64.pow(divisibility))
         .ok_or_else(|| anyhow::anyhow!("Invalid divisibility factor"))?;
 
     // Multiply the decimal amount by the factor
