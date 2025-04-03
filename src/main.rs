@@ -110,6 +110,7 @@ async fn main() {
             match subscriber.recv_msg(0) {
                 Ok(topic) => {
                     if topic.as_str() == Some("rawblock") {
+                        zmq_state.logger.debug("Received raw block");
                         let raw_block_msg =
                             subscriber.recv_msg(0).expect("Failed to receive raw block");
 
@@ -125,6 +126,8 @@ async fn main() {
                                     return; // Exit the current iteration if there's an error
                                 }
                             };
+
+                        zmq_state.logger.debug("Deserializing raw block");
 
                         match deserialize::<Block>(&raw_block_data) {
                             Ok(block) => {
@@ -207,6 +210,7 @@ async fn main() {
                 .with_blocks_read(|blocks| blocks.has_blocks())
                 .await
             {
+                block_state.logger.debug("Notified, processing blocks");
                 let block_hashes = block_state
                     .with_blocks_read(|blocks| blocks.get_blocks())
                     .await;
