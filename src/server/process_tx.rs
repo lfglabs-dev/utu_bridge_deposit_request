@@ -5,18 +5,20 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
+use utu_bridge_types::bitcoin::BitcoinAddress;
 
 use crate::models::hiro::BlockActivity;
 use crate::process_block::{is_valid_receive_operation, process_deposit_transaction};
 use crate::server::responses::{ApiResponse, Status};
 use crate::state::database::DatabaseExt;
 use crate::state::AppState;
+use crate::utils::general::is_valid_tx_id;
 use crate::utils::runes::get_supported_runes_vec;
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
 use axum_auto_routes::route;
-use bitcoin::BlockHash;
+use bitcoin::{BlockHash, Network};
 use mongodb::bson::doc;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -29,7 +31,6 @@ pub struct ProcessTxQuery {
 lazy_static::lazy_static! {
     static ref HIRO_API_URL: String = env::var("HIRO_API_URL").expect("HIRO_API_URL must be set");
     static ref HIRO_API_KEY: String = env::var("HIRO_API_KEY").expect("HIRO_API_KEY must be set");
-    static ref UTU_API_URL: String = env::var("UTU_API_URL").expect("UTU_API_URL must be set");
     static ref HIRO_TIMEOUT_MS: u64 = env::var("HIRO_TIMEOUT_MS").expect("HIRO_TIMEOUT_MS must be set").parse::<u64>().expect("HIRO_TIMEOUT_MS must be a valid u64");
     static ref HTTP_CLIENT: Client = Client::builder()
         .timeout(Duration::from_secs(10))
@@ -89,6 +90,13 @@ async fn process_tx(
     session: &mut ClientSession,
     tx_id: String,
 ) -> Result<()> {
+    // Validate transaction ID format
+    if !is_valid_tx_id(&tx_id) {
+        return Err(anyhow::anyhow!(
+            "Invalid transaction ID format. Must contain only hex characters (0-9, a-f, A-F)."
+        ));
+    }
+
     let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
 
     // Fetch transaction details and parse all activities
@@ -116,6 +124,7 @@ async fn process_tx(
         for tx in tx_activity.results {
             if is_valid_receive_operation(&tx, &supported_runes) {
                 let receiver_address = tx.address.clone().unwrap();
+                let receiver_address = BitcoinAddress::new(&receiver_address, Network::Bitcoin)?;
 
                 // Check if the received_address is part of our deposit addresses
                 if let Ok(starknet_addr) = state
