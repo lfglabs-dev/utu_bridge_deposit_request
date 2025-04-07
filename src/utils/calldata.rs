@@ -110,10 +110,7 @@ fn get_block_header(
     bitcoin_provider: &bitcoincore_rpc::Client,
     block_hash: BlockHash,
 ) -> Option<GetBlockHeaderResult> {
-    match bitcoin_provider.get_block_header_info(&block_hash) {
-        Ok(block_header) => Some(block_header),
-        Err(_) => None,
-    }
+    bitcoin_provider.get_block_header_info(&block_hash).ok()
 }
 
 fn get_witness(data: Vec<Vec<u8>>) -> Vec<Felt> {

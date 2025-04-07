@@ -1,14 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use crate::{
-    models::{hiro::BlockActivityResult, runes::RuneDetail},
+    models::hiro::BlockActivityResult,
     state::{database::DatabaseExt, AppState},
 };
 use anyhow::Result;
+use utu_bridge_types::bitcoin::BitcoinRuneId;
 
 pub async fn get_supported_runes_vec(
     state: &Arc<AppState>,
-) -> Result<(Vec<String>, HashMap<String, RuneDetail>)> {
+) -> Result<(Vec<BitcoinRuneId>, HashMap<BitcoinRuneId, u32>)> {
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
         Err(_) => {
@@ -28,13 +29,7 @@ pub async fn get_supported_runes_vec(
 
     for rune in &supported_runes_array {
         supported_runes.push(rune.id.clone());
-        rune_map.insert(
-            rune.id.clone(),
-            RuneDetail {
-                symbol: rune.symbol.clone(),
-                divisibility: rune.divisibility,
-            },
-        );
+        rune_map.insert(rune.id.clone(), rune.divisibility);
     }
 
     Ok((supported_runes, rune_map))
@@ -70,13 +65,13 @@ pub async fn log_supported_runes(state: &Arc<AppState>) -> Result<()> {
 
 pub fn get_rune_details(
     tx: &BlockActivityResult,
-    runes_mapping: &HashMap<String, RuneDetail>,
-) -> (String, u64, f64) {
-    let (rune_symbol, rune_divisibility) = if let Some(rune) = runes_mapping.get(&tx.rune.id) {
-        (rune.symbol.clone(), rune.divisibility)
-    } else {
-        (tx.rune.name.clone(), 0)
-    };
+    runes_mapping: &HashMap<BitcoinRuneId, u32>,
+) -> Result<(BitcoinRuneId, u32, f64)> {
+    let divisibility = runes_mapping.get(&BitcoinRuneId::from_str(&tx.rune.id)?);
+    if divisibility.is_none() {
+        return Err(anyhow::anyhow!("Rune not found: {}", tx.rune.id));
+    }
+    let divisibility = divisibility.unwrap();
 
     let amount: f64 = if let Some(amount) = tx.amount.clone() {
         amount.parse::<f64>().unwrap_or(0.0)
@@ -84,5 +79,7 @@ pub fn get_rune_details(
         0.0
     };
 
-    (rune_symbol, rune_divisibility, amount)
+    let rune_id = BitcoinRuneId::from_str(&tx.rune.id)?;
+
+    Ok((rune_id, *divisibility, amount))
 }

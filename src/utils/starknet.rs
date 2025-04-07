@@ -9,8 +9,9 @@ use starknet::core::{
     utils::{get_udc_deployed_address, UdcUniqueness},
 };
 use starknet_crypto::poseidon_hash_many;
+use utu_bridge_types::{bitcoin::BitcoinRuneId, starknet::StarknetAddress};
 
-use crate::models::{hiro::BlockActivityResult, runes::RuneDetail};
+use crate::models::hiro::BlockActivityResult;
 
 lazy_static::lazy_static! {
     static ref RUNE_BRIDGE_CONTRACT: Felt = Felt::from_hex(&env::var("RUNE_BRIDGE_CONTRACT").expect("RUNE_BRIDGE_CONTRACT must be set")).unwrap();
@@ -19,20 +20,23 @@ lazy_static::lazy_static! {
 }
 
 pub fn compute_hashed_value(
-    runes_mapping: &HashMap<String, RuneDetail>,
+    runes_mapping: &HashMap<BitcoinRuneId, u32>,
     tx_data: BlockActivityResult,
-    starknet_addr: &str,
-) -> Result<(Felt, Felt, (Felt, Felt))> {
+    starknet_addr: &StarknetAddress,
+) -> Result<(Felt, Felt, Felt, (Felt, Felt))> {
     //  Fetch supported rune
-    let rune_details = runes_mapping.get(&tx_data.clone().rune.id);
-    if rune_details.is_none() {
+    let rune_id = BitcoinRuneId::from_str(&tx_data.clone().rune.id).unwrap();
+    let divisibility = runes_mapping.get(&rune_id);
+    if divisibility.is_none() {
         return Err(anyhow::anyhow!(format!(
             "Rune not supported: {:?}",
             tx_data.clone().rune.id
         )));
     }
-    let rune_details = rune_details.unwrap();
-    let rune_id: Felt = symbol_as_felt(&rune_details.symbol);
+
+    let divisibility = divisibility.unwrap();
+    let rune_id_block = Felt::from_dec_str(&rune_id.block().to_string())?;
+    let rune_id_tx = Felt::from_dec_str(&rune_id.tx().to_string())?;
 
     let amount = if let Some(amount) = tx_data.clone().amount {
         amount
@@ -43,7 +47,7 @@ pub fn compute_hashed_value(
         )));
     };
 
-    let amount_bigint = match convert_to_bigint(&amount, rune_details.divisibility) {
+    let amount_bigint = match convert_to_bigint(&amount, *divisibility) {
         Ok(amount_bigint) => amount_bigint,
         Err(err) => {
             return Err(anyhow::anyhow!(format!(
@@ -63,32 +67,23 @@ pub fn compute_hashed_value(
         )));
     };
 
-    let starknet_addr = Felt::from_hex(starknet_addr)?;
+    let hashed_value = poseidon_hash_many(&[
+        rune_id_block,
+        rune_id_tx,
+        amount_felt.0,
+        starknet_addr.felt,
+        tx_id_felt.0,
+    ]);
 
-    let hashed_value = poseidon_hash_many(&[rune_id, amount_felt.0, starknet_addr, tx_id_felt.0]);
-
-    Ok((hashed_value, rune_id, amount_felt))
+    Ok((hashed_value, rune_id_block, rune_id_tx, amount_felt))
 }
 
-pub fn symbol_as_felt(symbol: &str) -> Felt {
-    let bytes = symbol.as_bytes();
-    let mut rune_id_felt: u128 = 0;
-    let mut shift_amount: u128 = 1;
-
-    for &byte in bytes.iter() {
-        rune_id_felt += (byte as u128) * shift_amount;
-        shift_amount *= 256;
-    }
-
-    Felt::from(rune_id_felt)
-}
-
-pub fn convert_to_bigint(amount: &str, divisibility: u64) -> Result<BigInt> {
+pub fn convert_to_bigint(amount: &str, divisibility: u32) -> Result<BigInt> {
     // Parse the amount string to BigDecimal
     let decimal_amount = Decimal::from_str(amount)?;
 
     // Calculate the multiplicative factor from divisibility
-    let factor = Decimal::from_i64(10_i64.pow(divisibility as u32))
+    let factor = Decimal::from_i64(10_i64.pow(divisibility))
         .ok_or_else(|| anyhow::anyhow!("Invalid divisibility factor"))?;
 
     // Multiply the decimal amount by the factor
@@ -117,12 +112,12 @@ pub fn hex_to_uint256(hex_str: &str) -> Result<(Felt, Felt)> {
     ))
 }
 
-pub fn compute_rune_contract(rune_id: Felt) -> Felt {
+pub fn compute_rune_contract(rune_id_block: Felt, rune_id_tx: Felt) -> Felt {
     get_udc_deployed_address(
         Felt::ZERO,
         *SAG_CLASS_HASH,
         &UdcUniqueness::NotUnique,
-        &[rune_id],
+        &[rune_id_block, rune_id_tx],
     )
 }
 
@@ -141,20 +136,20 @@ pub fn to_uint256(n: BigInt) -> (Felt, Felt) {
 #[cfg(test)]
 mod tests {
     use starknet::macros::felt;
+    use utu_bridge_types::bitcoin::BitcoinRuneId;
 
     use super::*;
 
     #[test]
     fn test_compute_rune_contract() {
-        let symbol = "🐕";
-        let symbol_felt = symbol_as_felt(symbol);
-        let expected_symbol = Felt::from_dec_str("2509283312").unwrap();
-        assert_eq!(symbol_felt, expected_symbol);
+        let rune_id = BitcoinRuneId::new(840000, 3);
 
         let expected_contract_addr =
-            Felt::from_hex("0x01c8C5847aE848Eabf909515338e74DADBC724f54C7735851c57eCfdF1319143")
-                .unwrap();
-        let computed_contract_addr = compute_rune_contract(symbol_felt);
+            felt!("0x40e81cfeb176bfdbc5047bbc55eb471cfab20a6b221f38d8fda134e1bfffca4");
+        let computed_contract_addr = compute_rune_contract(
+            Felt::from_dec_str(&rune_id.block().to_string()).unwrap(),
+            Felt::from_dec_str(&rune_id.tx().to_string()).unwrap(),
+        );
         assert_eq!(computed_contract_addr, expected_contract_addr);
     }
 
