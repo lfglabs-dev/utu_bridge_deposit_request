@@ -22,7 +22,7 @@ jobs:
         with:
           fetch-depth: 1 # Shallow clone for faster checkout
           submodules: recursive # Add this to fetch submodules
-          token: ${{ secrets.GITHUB_TOKEN }} # Add token for private submodule access
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }} # Add token for private submodule access
 
       - run: curl -sfS https://dotenvx.sh/install.sh | sh
 
