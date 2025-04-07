@@ -7,59 +7,59 @@ env:
 
 on:
   push:
-    branches: [ main, master, dev ]
+    branches: [main, master, dev]
   pull_request:
-    branches: [ main, master, dev ]
+    branches: [main, master, dev]
   workflow_dispatch:
 
 jobs:
-
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 1  # Shallow clone for faster checkout
-        submodules: recursive  # Add this to fetch submodules
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1 # Shallow clone for faster checkout
+          submodules: recursive # Add this to fetch submodules
+          token: ${{ secrets.GITHUB_TOKEN }} # Add token for private submodule access
 
-    - run: curl -sfS https://dotenvx.sh/install.sh | sh
+      - run: curl -sfS https://dotenvx.sh/install.sh | sh
 
-    # Cache the entire Rust toolchain directory
-    - name: Cache Rust toolchain
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/bin
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('Cargo.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-rust-toolchain-
-    
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt,clippy
-    
-    - name: Cache Rust dependencies
-      uses: Swatinem/rust-cache@v2
-      with:
-        # Add these options to reduce logging
-        save-if: ${{ github.ref == 'refs/heads/main' }}
-        shared-key: "rust-cache"
-        # Disable debug logging
-        debug: false
-        
-    - name: Check code formatting
-      run: cargo fmt --check
-        
-    - name: Run clippy
-      run: cargo clippy -- -D warnings
-        
-    - name: Run unit tests
-      run: dotenvx run -- cargo test
-      env:
-        DOTENV_PRIVATE_KEY: ${{ secrets.DOTENV_PRIVATE_KEY }}
+      # Cache the entire Rust toolchain directory
+      - name: Cache Rust toolchain
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-toolchain-
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Add these options to reduce logging
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          shared-key: "rust-cache"
+          # Disable debug logging
+          debug: false
+
+      - name: Check code formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Run unit tests
+        run: dotenvx run -- cargo test
+        env:
+          DOTENV_PRIVATE_KEY: ${{ secrets.DOTENV_PRIVATE_KEY }}
