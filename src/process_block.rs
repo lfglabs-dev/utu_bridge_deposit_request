@@ -51,7 +51,11 @@ pub async fn process_block(
         }
     };
     if let Err(err) = session.start_transaction().await {
-        return Err(anyhow::anyhow!("Database error: {:?}", err));
+        return Err(anyhow::anyhow!(
+            "Error starting database transaction for block at height {} : {:?}",
+            block_height,
+            err
+        ));
     };
 
     let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
@@ -142,10 +146,17 @@ pub async fn process_block(
                 }
             }
             Err(e) => {
-                state.logger.warning(format!(
-                    "Failed to get activity for block_height: {} and block_hash: {} at offset: {} and attempts: {} with error: {:?}, retrying...",
-                    block_height, block_hash, offset, attempts, e
-                ));
+                if attempts == 0 {
+                    state.logger.info(format!(
+                        "Failed to get activity for block_height: {} and block_hash: {} at offset: {} and attempts: {} with error: {:?}, retrying...",
+                        block_height, block_hash, offset, attempts, e
+                    ));
+                } else {
+                    state.logger.warning(format!(
+                        "Failed to get activity for block_height: {} and block_hash: {} at offset: {} and attempts: {} with error: {:?}, retrying...",
+                        block_height, block_hash, offset, attempts, e
+                    ));
+                }
                 if attempts < max_attempts {
                     attempts += 1;
                     continue;

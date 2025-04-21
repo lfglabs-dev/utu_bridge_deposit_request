@@ -233,9 +233,10 @@ async fn main() {
                                 )
                                 .await
                                 {
-                                    block_state
-                                        .logger
-                                        .severe(format!("Failed to process block: {}", e));
+                                    block_state.logger.severe(format!(
+                                        "Failed to process block {}: {}",
+                                        block.height, e
+                                    ));
                                 }
                                 // We remove the block from the state
                                 block_state
