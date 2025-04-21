@@ -175,7 +175,11 @@ pub async fn process_block(
         .info(format!("Completed processing block: {}", block_hash));
 
     if let Err(err) = session.commit_transaction().await {
-        return Err(anyhow::anyhow!("Database error: {:?}", err));
+        return Err(anyhow::anyhow!(
+            "Error committing transaction for block at height {} : {:?}",
+            block_height,
+            err
+        ));
     };
 
     if main_loop || tx_found {
