@@ -68,7 +68,10 @@ impl DatabaseExt for Database {
         while let Some(doc_result) = cursor.next(session).await {
             match doc_result {
                 Ok(doc) => res.push(doc),
-                Err(err) => return Err(DatabaseError::QueryFailed(err)),
+                Err(err) => {
+                    logger.severe(format!("Database query failed for runes: {:?}", err));
+                    return Err(DatabaseError::QueryFailed(err));
+                }
             }
         }
 
