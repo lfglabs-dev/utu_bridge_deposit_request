@@ -22,7 +22,10 @@ pub async fn get_supported_runes_vec(
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    let supported_runes_array = state.db.get_supported_runes(&mut session).await?;
+    let supported_runes_array = state
+        .db
+        .get_supported_runes(&mut session, &state.logger)
+        .await?;
 
     let mut supported_runes = Vec::new();
     let mut rune_map = HashMap::new();
@@ -48,7 +51,10 @@ pub async fn log_supported_runes(state: &Arc<AppState>) -> Result<()> {
         return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
-    let supported_runes = state.db.get_supported_runes(&mut session).await?;
+    let supported_runes = state
+        .db
+        .get_supported_runes(&mut session, &state.logger)
+        .await?;
 
     let mut formatted_runes = String::from("Supported runes:\n");
     for rune in supported_runes {
