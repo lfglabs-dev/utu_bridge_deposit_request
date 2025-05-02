@@ -1,5 +1,4 @@
 use anyhow::Result;
-use mongodb::ClientSession;
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -44,29 +43,7 @@ pub async fn process_tx_query(
     State(state): State<Arc<AppState>>,
     body: Json<ProcessTxQuery>,
 ) -> impl IntoResponse {
-    let mut session = match state.db.client().start_session().await {
-        Ok(session) => session,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::new(
-                    Status::InternalServerError,
-                    "Database error: unable to start session",
-                )),
-            );
-        }
-    };
-    if let Err(err) = session.start_transaction().await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::new(
-                Status::InternalServerError,
-                format!("Database error: {:?}", err),
-            )),
-        );
-    };
-
-    if let Err(err) = process_tx(&state, &mut session, body.tx_id.clone()).await {
+    if let Err(err) = process_tx(&state, body.tx_id.clone()).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiResponse::new(
@@ -85,11 +62,7 @@ pub async fn process_tx_query(
     )
 }
 
-async fn process_tx(
-    state: &Arc<AppState>,
-    session: &mut ClientSession,
-    tx_id: String,
-) -> Result<()> {
+async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
     // Validate transaction ID format
     if !is_valid_tx_id(&tx_id) {
         return Err(anyhow::anyhow!(
@@ -127,10 +100,7 @@ async fn process_tx(
                 let receiver_address = BitcoinAddress::new(&receiver_address, Network::Bitcoin)?;
 
                 // Check if the received_address is part of our deposit addresses
-                if let Ok(starknet_addr) = state
-                    .db
-                    .is_deposit_addr(&state.logger, receiver_address.clone())
-                    .await
+                if let Ok(starknet_addr) = state.db.is_deposit_addr(receiver_address.clone()).await
                 {
                     let block_hash = if let Ok(hash) = BlockHash::from_str(&tx.location.block_hash)
                     {
