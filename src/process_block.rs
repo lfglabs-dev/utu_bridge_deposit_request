@@ -97,10 +97,8 @@ pub async fn process_block(
                         }
 
                         // Check if the received_address is part of our deposit addresses
-                        if let Ok(starknet_addr) = state
-                            .db
-                            .is_deposit_addr(&state.logger, receiver_address.clone())
-                            .await
+                        if let Ok(starknet_addr) =
+                            state.db.is_deposit_addr(receiver_address.clone()).await
                         {
                             let (rune_id, _, amount) = get_rune_details(&tx, &runes_mapping)?;
                             state.logger.info(format!(

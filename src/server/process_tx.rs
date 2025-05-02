@@ -127,10 +127,7 @@ async fn process_tx(
                 let receiver_address = BitcoinAddress::new(&receiver_address, Network::Bitcoin)?;
 
                 // Check if the received_address is part of our deposit addresses
-                if let Ok(starknet_addr) = state
-                    .db
-                    .is_deposit_addr(&state.logger, receiver_address.clone())
-                    .await
+                if let Ok(starknet_addr) = state.db.is_deposit_addr(receiver_address.clone()).await
                 {
                     let block_hash = if let Ok(hash) = BlockHash::from_str(&tx.location.block_hash)
                     {
