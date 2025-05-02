@@ -10,7 +10,6 @@ use super::DatabaseError;
 pub trait DatabaseExt {
     async fn is_deposit_addr(
         &self,
-        session: &mut ClientSession,
         receiver_address: BitcoinAddress,
     ) -> Result<StarknetAddress, DatabaseError>;
     async fn get_supported_runes(
@@ -23,13 +22,11 @@ pub trait DatabaseExt {
 impl DatabaseExt for Database {
     async fn is_deposit_addr(
         &self,
-        session: &mut ClientSession,
         receiver_address: BitcoinAddress,
     ) -> Result<StarknetAddress, DatabaseError> {
         let result = self
             .collection::<DepositAddressesDocument>("deposit_addresses")
             .find_one(doc! {"bitcoin_deposit_address": receiver_address.as_str()})
-            .session(&mut *session)
             .await
             .map_err(DatabaseError::QueryFailed)?;
 
