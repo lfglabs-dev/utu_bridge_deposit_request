@@ -31,7 +31,7 @@ impl DatabaseExt for Database {
             .find_one(doc! {"bitcoin_deposit_address": receiver_address.as_str()})
             .await
             .map_err(|err| {
-                logger.severe(format!(
+                logger.debug(format!(
                     "Database query failed for deposit address {}: {:?}",
                     receiver_address.as_str(),
                     err
