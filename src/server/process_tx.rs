@@ -62,10 +62,7 @@ pub async fn process_tx_query(
     )
 }
 
-async fn process_tx(
-    state: &Arc<AppState>,
-    tx_id: String,
-) -> Result<()> {
+async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
     // Validate transaction ID format
     if !is_valid_tx_id(&tx_id) {
         return Err(anyhow::anyhow!(
@@ -103,10 +100,7 @@ async fn process_tx(
                 let receiver_address = BitcoinAddress::new(&receiver_address, Network::Bitcoin)?;
 
                 // Check if the received_address is part of our deposit addresses
-                if let Ok(starknet_addr) = state
-                    .db
-                    .is_deposit_addr(receiver_address.clone())
-                    .await
+                if let Ok(starknet_addr) = state.db.is_deposit_addr(receiver_address.clone()).await
                 {
                     let block_hash = if let Ok(hash) = BlockHash::from_str(&tx.location.block_hash)
                     {
