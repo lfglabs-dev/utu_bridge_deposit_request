@@ -140,10 +140,12 @@ pub async fn process_block(
                 }
             }
             Err(e) => {
-                state.logger.warning(format!(
-                    "Failed to get activity for block_height: {} and block_hash: {} at offset: {} and attempts: {} with error: {:?}, retrying...",
-                    block_height, block_hash, offset, attempts, e
-                ));
+                if attempts > 0 {
+                    state.logger.warning(format!(
+                        "Failed to get activity for block_height: {} and block_hash: {} at offset: {} and attempts: {} with error: {:?}, retrying...",
+                        block_height, block_hash, offset, attempts, e
+                    ));
+                }
                 if attempts < max_attempts {
                     attempts += 1;
                     continue;
