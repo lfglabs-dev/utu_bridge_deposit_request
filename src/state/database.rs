@@ -3,7 +3,7 @@ use utu_bridge_types::{
     bitcoin::BitcoinAddress, starknet::StarknetAddress, DepositAddressesDocument, RunesDocument,
 };
 
-use crate::logger::Logger;
+use crate::{logger::Logger, models::monitor::FordefiTransaction};
 
 use super::DatabaseError;
 
@@ -17,6 +17,11 @@ pub trait DatabaseExt {
         session: &mut ClientSession,
         logger: &Logger,
     ) -> Result<Vec<RunesDocument>, DatabaseError>;
+    async fn store_fordefi_txs(
+        &self,
+        session: &mut ClientSession,
+        fordefi_tx: FordefiTransaction,
+    ) -> Result<(), DatabaseError>;
 }
 
 impl DatabaseExt for Database {
@@ -64,5 +69,22 @@ impl DatabaseExt for Database {
         }
 
         Ok(res)
+    }
+
+    async fn store_fordefi_txs(
+        &self,
+        session: &mut ClientSession,
+        fordefi_tx: FordefiTransaction,
+    ) -> Result<(), DatabaseError> {
+        let collection = self.collection::<FordefiTransaction>("fordefi_txs");
+        collection
+            .insert_one(fordefi_tx)
+            .session(&mut *session)
+            .await
+            .map_err(|e| {
+                log::error!("Error inserting fordefi transaction: {:?}", e);
+                DatabaseError::QueryFailed(e)
+            })?;
+        Ok(())
     }
 }

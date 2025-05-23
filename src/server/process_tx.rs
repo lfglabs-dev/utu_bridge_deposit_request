@@ -63,6 +63,15 @@ pub async fn process_tx_query(
 }
 
 async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
+    let mut session = match state.db.client().start_session().await {
+        Ok(session) => session,
+        Err(_) => {
+            return Err(anyhow::anyhow!(
+                "Database error: unable to start session".to_string()
+            ));
+        }
+    };
+
     // Validate transaction ID format
     if !is_valid_tx_id(&tx_id) {
         return Err(anyhow::anyhow!(
@@ -111,6 +120,7 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
                     // we process the deposit transaction and add it to queue.
                     if let Err(e) = process_deposit_transaction(
                         state,
+                        &mut session,
                         &tx,
                         &starknet_addr,
                         &block_hash,
@@ -144,6 +154,10 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
         // we sleep for HIRO_TIMEOUT_MS to avoid rate limit
         sleep(Duration::from_millis(*HIRO_TIMEOUT_MS)).await;
     }
+
+    if let Err(err) = session.commit_transaction().await {
+        return Err(anyhow::anyhow!("Database error: {:?}", err));
+    };
 
     Err(anyhow::anyhow!(
         "Failed to process transaction. Unable to find a matching deposit."

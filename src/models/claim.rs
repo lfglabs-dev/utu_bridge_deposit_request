@@ -12,4 +12,5 @@ pub struct FordefiDepositData {
     pub transaction_struct: Vec<Felt>,
     pub rune_contract: Felt,
     pub starknet_addr: String,
+    pub vault_id: String,
 }

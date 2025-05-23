@@ -3,10 +3,11 @@ use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
 use anyhow::Result;
 use bitcoin::{BlockHash, Network, Txid};
 use bitcoincore_rpc::{json::GetRawTransactionResult, RpcApi};
+use mongodb::{bson::DateTime, ClientSession};
 use reqwest::Client;
 use tokio::time::sleep;
 use utu_bridge_types::{
-    bitcoin::{BitcoinAddress, BitcoinRuneId},
+    bitcoin::{BitcoinAddress, BitcoinRuneId, BitcoinTxId},
     starknet::StarknetAddress,
 };
 
@@ -14,13 +15,13 @@ use crate::{
     models::{
         claim::FordefiDepositData,
         hiro::{BlockActivity, BlockActivityResult, Operation},
+        monitor::{FordefiId, FordefiTransaction, TransactionType},
     },
     state::{database::DatabaseExt, AppState},
     utils::{
         calldata::get_transaction_struct_felt,
         fordefi::send_fordefi_request,
-        runes::get_rune_details,
-        runes::get_supported_runes_vec,
+        runes::{get_rune_details, get_supported_runes_vec},
         starknet::{compute_hashed_value, compute_rune_contract},
     },
 };
@@ -34,6 +35,7 @@ lazy_static::lazy_static! {
         .pool_max_idle_per_host(10)
         .build()
         .expect("Failed to create HTTP client");
+        static ref FORDEFI_DEPOSIT_VAULT_ID: String = env::var("FORDEFI_DEPOSIT_VAULT_ID").expect("FORDEFI_DEPOSIT_VAULT_ID must be set");
 }
 
 pub async fn process_block(
@@ -112,6 +114,7 @@ pub async fn process_block(
                             // We process the deposit transaction and add it to the queue
                             if let Err(e) = process_deposit_transaction(
                                 state,
+                                &mut session,
                                 &tx,
                                 &starknet_addr,
                                 &block_hash,
@@ -190,6 +193,7 @@ pub fn is_valid_receive_operation(
 /// Processes a valid deposit transaction.
 pub async fn process_deposit_transaction(
     state: &Arc<AppState>,
+    session: &mut ClientSession,
     tx: &BlockActivityResult,
     starknet_addr: &StarknetAddress,
     block_hash: &BlockHash,
@@ -220,6 +224,7 @@ pub async fn process_deposit_transaction(
                 transaction_struct,
                 rune_contract: compute_rune_contract(rune_id_block_felt, rune_id_tx_felt),
                 starknet_addr: starknet_addr.to_string(),
+                vault_id: FORDEFI_DEPOSIT_VAULT_ID.clone(),
             };
 
             match send_fordefi_request(deposit_data).await {
@@ -227,6 +232,17 @@ pub async fn process_deposit_transaction(
                     state
                         .logger
                         .debug(format!("Processed with Fordefi tx-id: {}", fordefi_id));
+                    // store the fordefi_id in the database
+                    let fordefi_tx = FordefiTransaction {
+                        btc_txid: BitcoinTxId::new(&tx.location.tx_id).unwrap(),
+                        fordefi_ids: vec![FordefiId {
+                            id: fordefi_id,
+                            vault_id: FORDEFI_DEPOSIT_VAULT_ID.clone(),
+                        }],
+                        sent_at: DateTime::now(),
+                        tx_type: TransactionType::Deposit,
+                    };
+                    state.db.store_fordefi_txs(session, fordefi_tx).await?;
                 }
                 Err(err) => {
                     state.logger.severe(format!(
