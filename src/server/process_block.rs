@@ -1,7 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::models::blocks::BlockWithTransactions;
 use crate::process_block::process_block;
 use crate::server::responses::{ApiResponse, Status};
 use crate::state::AppState;
@@ -34,11 +33,8 @@ pub async fn process_block_query(
         );
     };
 
-    let block_height = match state.bitcoin_provider.call::<BlockWithTransactions>(
-        "getblock",
-        &[serde_json::to_value(block_hash).unwrap(), 2.into()],
-    ) {
-        Ok(block) => block.height,
+    let block = match state.bitcoin_provider.get_block(&block_hash) {
+        Ok(block) => block,
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -46,11 +42,11 @@ pub async fn process_block_query(
                     Status::InternalServerError,
                     format!("Error while fetching block height: {:?}", e),
                 )),
-            );
+            )
         }
     };
 
-    if let Err(e) = process_block(&state, block_hash, block_height, false).await {
+    if let Err(e) = process_block(&state, block_hash, block, false).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiResponse::new(

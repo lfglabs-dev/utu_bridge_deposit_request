@@ -1,17 +1,14 @@
-use std::{collections::HashMap, env, str::FromStr};
+use std::{collections::HashMap, env};
 
 use anyhow::Result;
-use bigdecimal::{num_bigint::BigInt, FromPrimitive, Num};
+use bigdecimal::{num_bigint::BigInt, Num};
 use num_integer::Integer;
-use rust_decimal::Decimal;
 use starknet::core::{
     types::Felt,
     utils::{get_udc_deployed_address, UdcUniqueness},
 };
 use starknet_crypto::poseidon_hash_many;
 use utu_bridge_types::{bitcoin::BitcoinRuneId, starknet::StarknetAddress};
-
-use crate::models::hiro::BlockActivityResult;
 
 lazy_static::lazy_static! {
     static ref RUNE_BRIDGE_CONTRACT: Felt = Felt::from_hex(&env::var("RUNE_BRIDGE_CONTRACT").expect("RUNE_BRIDGE_CONTRACT must be set")).unwrap();
@@ -20,51 +17,31 @@ lazy_static::lazy_static! {
 }
 
 pub fn compute_hashed_value(
-    runes_mapping: &HashMap<BitcoinRuneId, u32>,
-    tx_data: BlockActivityResult,
+    runes_mapping: &HashMap<String, (BitcoinRuneId, u32)>,
+    rune_name: String,
+    amount: u128,
+    tx_id: &str,
     starknet_addr: &StarknetAddress,
 ) -> Result<(Felt, Felt, Felt, (Felt, Felt))> {
     //  Fetch supported rune
-    let rune_id = BitcoinRuneId::from_str(&tx_data.clone().rune.id).unwrap();
-    let divisibility = runes_mapping.get(&rune_id);
-    if divisibility.is_none() {
+    let rune_data = runes_mapping.get(&rune_name);
+    if rune_data.is_none() {
         return Err(anyhow::anyhow!(format!(
             "Rune not supported: {:?}",
-            tx_data.clone().rune.id
+            rune_name
         )));
     }
+    let (rune_id, _) = rune_data.unwrap();
 
-    let divisibility = divisibility.unwrap();
     let rune_id_block = Felt::from_dec_str(&rune_id.block().to_string())?;
     let rune_id_tx = Felt::from_dec_str(&rune_id.tx().to_string())?;
-
-    let amount = if let Some(amount) = tx_data.clone().amount {
-        amount
-    } else {
-        return Err(anyhow::anyhow!(format!(
-            "Amount is not specified: {:?}",
-            tx_data.clone().amount
-        )));
-    };
-
-    let amount_bigint = match convert_to_bigint(&amount, *divisibility) {
-        Ok(amount_bigint) => amount_bigint,
-        Err(err) => {
-            return Err(anyhow::anyhow!(format!(
-                "Amount is not a valid number: {:?}",
-                err
-            )));
-        }
-    };
+    let amount_bigint = BigInt::from(amount);
     let amount_felt = to_uint256(amount_bigint);
 
-    let tx_id_felt = if let Ok(tx_id) = hex_to_uint256(&tx_data.location.tx_id) {
+    let tx_id_felt = if let Ok(tx_id) = hex_to_uint256(&tx_id) {
         tx_id
     } else {
-        return Err(anyhow::anyhow!(format!(
-            "Invalid tx_id: {:?}",
-            tx_data.location.tx_id
-        )));
+        return Err(anyhow::anyhow!(format!("Invalid tx_id: {:?}", tx_id)));
     };
 
     let hashed_value = poseidon_hash_many(&[
@@ -76,23 +53,6 @@ pub fn compute_hashed_value(
     ]);
 
     Ok((hashed_value, rune_id_block, rune_id_tx, amount_felt))
-}
-
-pub fn convert_to_bigint(amount: &str, divisibility: u32) -> Result<BigInt> {
-    // Parse the amount string to BigDecimal
-    let decimal_amount = Decimal::from_str(amount)?;
-
-    // Calculate the multiplicative factor from divisibility
-    let factor = Decimal::from_i64(10_i64.pow(divisibility))
-        .ok_or_else(|| anyhow::anyhow!("Invalid divisibility factor"))?;
-
-    // Multiply the decimal amount by the factor
-    let scaled_amount = decimal_amount * factor;
-
-    // Convert the scaled amount to BigInt (removing any fractional part)
-    let bigint_result = BigInt::from_str(&scaled_amount.trunc().to_string())?;
-
-    Ok(bigint_result)
 }
 
 pub fn hex_to_uint256(hex_str: &str) -> Result<(Felt, Felt)> {

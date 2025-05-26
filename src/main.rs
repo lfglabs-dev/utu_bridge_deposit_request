@@ -89,11 +89,6 @@ async fn main() {
         ))
         .expect("Failed to connect to socket");
 
-    // Subscribe to topics
-    // subscriber
-    //     .set_subscribe(b"hashblock")
-    //     .expect("Failed to subscribe to hashblock");
-
     shared_state
         .logger
         .info("Listening to separate deposit requests from Bitcoin to Starknet.");
@@ -142,20 +137,20 @@ async fn main() {
                                     block_height, block_hash
                                 ));
 
-                                let is_included = zmq_state
-                                    .with_blocks_read(|blocks| {
-                                        let block_hashes = blocks.get_blocks();
-                                        block_hashes.contains(&block_hash)
-                                    })
-                                    .await;
+                                // let is_included = zmq_state
+                                //     .with_blocks_read(|blocks| {
+                                //         let block_hashes = blocks.get_blocks();
+                                //         block_hashes.contains(&(block_hash, block))
+                                //     })
+                                //     .await;
 
-                                if is_included {
-                                    continue;
-                                }
+                                // if is_included {
+                                //     continue;
+                                // }
 
                                 zmq_state
                                     .with_blocks(|blocks| {
-                                        blocks.add_block(block_hash);
+                                        blocks.add_block(block);
                                     })
                                     .await;
                                 zmq_state.notifier.notify_one();
@@ -168,30 +163,6 @@ async fn main() {
                             }
                         }
                     }
-
-                    // if topic.as_str() == Some("hashblock") {
-                    //     let block_hash_msg = subscriber
-                    //         .recv_msg(0)
-                    //         .expect("Failed to receive block hash");
-
-                    //     let block_hash = match get_block_hash(block_hash_msg) {
-                    //         Ok(block_hash) => block_hash,
-                    //         Err(e) => {
-                    //             zmq_state
-                    //                 .logger
-                    //                 .info(format!("Failed to get block hash: {}", e));
-                    //             continue;
-                    //         }
-                    //     };
-                    //     zmq_state.logger.info(format!("Received block hash: {}", block_hash));
-
-                    //     zmq_state
-                    //         .with_blocks(|blocks| {
-                    //             blocks.add_block(block_hash);
-                    //         })
-                    //         .await;
-                    //     zmq_state.notifier.notify_one();
-                    // }
                 }
                 Err(e) => eprintln!("Failed to receive message: {}", e),
             }
@@ -211,24 +182,36 @@ async fn main() {
                 .await
             {
                 block_state.logger.debug("Notified, processing blocks");
-                let block_hashes = block_state
+                let blocks = block_state
                     .with_blocks_read(|blocks| blocks.get_blocks())
                     .await;
 
-                for block_hash in block_hashes {
-                    match block_state.bitcoin_provider.call::<BlockWithTransactions>(
-                        "getblock",
-                        &[serde_json::to_value(block_hash).unwrap(), 2.into()],
-                    ) {
-                        Ok(block) => {
-                            if block.confirmations >= *MIN_CONFIRMATIONS {
-                                block_state
-                                    .logger
-                                    .info(format!("Processing block at height: {}", block.height));
+                for block in blocks {
+                    // Handle block hash serialization with proper error handling
+                    let block_hash_value = match serde_json::to_value(block.block_hash()) {
+                        Ok(value) => value,
+                        Err(e) => {
+                            block_state
+                                .logger
+                                .warning(format!("Failed to serialize block hash: {}", e));
+                            continue; // Skip this block and continue with the next one
+                        }
+                    };
+
+                    match block_state
+                        .bitcoin_provider
+                        .call::<BlockWithTransactions>("getblock", &[block_hash_value, 2.into()])
+                    {
+                        Ok(block_from_rpc) => {
+                            if block_from_rpc.confirmations >= *MIN_CONFIRMATIONS {
+                                block_state.logger.info(format!(
+                                    "Processing block at height: {}",
+                                    block_from_rpc.height
+                                ));
                                 if let Err(e) = process_block::process_block(
                                     &block_state,
-                                    block_hash,
-                                    block.height,
+                                    block.block_hash(),
+                                    block.clone(),
                                     true,
                                 )
                                 .await
@@ -240,7 +223,7 @@ async fn main() {
                                 // We remove the block from the state
                                 block_state
                                     .with_blocks(|blocks| {
-                                        blocks.remove_block(block_hash);
+                                        blocks.remove_block(block.block_hash());
                                     })
                                     .await;
                             }
