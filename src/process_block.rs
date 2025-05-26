@@ -154,6 +154,7 @@ pub async fn process_block(
 }
 
 /// Processes a valid deposit transaction.
+#[allow(clippy::too_many_arguments)]
 pub async fn process_deposit_transaction(
     state: &Arc<AppState>,
     session: &mut ClientSession,

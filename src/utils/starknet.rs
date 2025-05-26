@@ -38,7 +38,7 @@ pub fn compute_hashed_value(
     let amount_bigint = BigInt::from(amount);
     let amount_felt = to_uint256(amount_bigint);
 
-    let tx_id_felt = if let Ok(tx_id) = hex_to_uint256(&tx_id) {
+    let tx_id_felt = if let Ok(tx_id) = hex_to_uint256(tx_id) {
         tx_id
     } else {
         return Err(anyhow::anyhow!(format!("Invalid tx_id: {:?}", tx_id)));
