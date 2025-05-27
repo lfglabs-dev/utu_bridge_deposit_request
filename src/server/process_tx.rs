@@ -1,12 +1,10 @@
 use anyhow::Result;
 use bitcoincore_rpc::RpcApi;
-use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use utu_bridge_types::bitcoin::BitcoinAddress;
 
-use crate::models::hiro::BlockActivity;
 use crate::process_block::{get_ord_data, process_deposit_transaction};
 use crate::server::responses::{ApiResponse, Status};
 use crate::state::database::DatabaseExt;
@@ -28,8 +26,6 @@ pub struct ProcessTxQuery {
 }
 
 lazy_static::lazy_static! {
-    static ref HIRO_API_URL: String = env::var("HIRO_API_URL").expect("HIRO_API_URL must be set");
-    static ref HIRO_API_KEY: String = env::var("HIRO_API_KEY").expect("HIRO_API_KEY must be set");
     static ref HTTP_CLIENT: Client = Client::builder()
         .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(10)
@@ -116,6 +112,10 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
                             .was_submitted(&mut session, txid.to_string(), output_index)
                             .await?
                         {
+                            state.logger.debug(format!(
+                                "Transaction already submitted: {}:{}. Skipping...",
+                                txid, output_index
+                            ));
                             continue;
                         }
 
@@ -173,36 +173,12 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
 }
 
 async fn get_block_hash(state: &Arc<AppState>, tx_id: String) -> Result<BlockHash> {
-    let url = format!(
-        "{}/runes/v1/transactions/{}/activity?offset=0&limit=60",
-        *HIRO_API_URL, tx_id
-    );
-    let res = HTTP_CLIENT
-        .get(url)
-        .header("x-api-key", HIRO_API_KEY.clone())
-        .send()
-        .await?;
+    let txid = Txid::from_str(&tx_id)?;
+    let tx = state
+        .bitcoin_provider
+        .get_raw_transaction_info(&txid, None)?;
 
-    if !res.status().is_success() {
-        state
-            .logger
-            .warning(format!("Failed to get activity for txid: {}", tx_id));
-        return Err(anyhow::anyhow!(
-            "Failed to get activity for txid: {}",
-            tx_id
-        ));
-    }
-    let tx_activity = res.json::<BlockActivity>().await?;
-
-    let activity = tx_activity
-        .results
-        .first()
-        .ok_or(anyhow::anyhow!("No activity found"))?;
-    let block_hash = if let Ok(hash) = BlockHash::from_str(&activity.location.block_hash) {
-        hash
-    } else {
-        return Err(anyhow::anyhow!("Invalid block hash"));
-    };
+    let block_hash = tx.blockhash.ok_or(anyhow::anyhow!("No block hash found"))?;
 
     Ok(block_hash)
 }
