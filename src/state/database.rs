@@ -1,6 +1,8 @@
 use mongodb::{bson::doc, ClientSession, Database};
 use utu_bridge_types::{
-    bitcoin::BitcoinAddress, starknet::StarknetAddress, DepositAddressesDocument, RunesDocument,
+    bitcoin::{BitcoinAddress, BitcoinTxId},
+    starknet::StarknetAddress,
+    ClaimedRunesDepositsDocument, DepositAddressesDocument, RunesDocument,
 };
 
 use crate::{logger::Logger, models::monitor::FordefiTransaction};
@@ -22,6 +24,12 @@ pub trait DatabaseExt {
         session: &mut ClientSession,
         fordefi_tx: FordefiTransaction,
     ) -> Result<(), DatabaseError>;
+    async fn was_submitted(
+        &self,
+        session: &mut ClientSession,
+        txid: String,
+        output_index: usize,
+    ) -> Result<bool, DatabaseError>;
 }
 
 impl DatabaseExt for Database {
@@ -86,5 +94,29 @@ impl DatabaseExt for Database {
                 DatabaseError::QueryFailed(e)
             })?;
         Ok(())
+    }
+
+    async fn was_submitted(
+        &self,
+        session: &mut ClientSession,
+        txid: String,
+        output_index: usize,
+    ) -> Result<bool, DatabaseError> {
+        let txid = BitcoinTxId::new(&txid)
+            .map_err(|e| anyhow::anyhow!("Invalid transaction ID: {}", e))?;
+        let collection = self.collection::<ClaimedRunesDepositsDocument>("claimed_runes_deposits");
+        let result = collection
+            .find_one(doc! {"tx_id": txid.as_str(), "vout": output_index as u32})
+            .session(&mut *session)
+            .await
+            .map_err(|e| {
+                log::error!("Error checking if transaction was submitted: {:?}", e);
+                DatabaseError::QueryFailed(e)
+            })?;
+
+        match result {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
     }
 }

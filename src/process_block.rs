@@ -86,6 +86,15 @@ pub async fn process_block(
                                 if let Ok(starknet_addr) =
                                     state.db.is_deposit_addr(btc_receiver_address.clone()).await
                                 {
+                                    // Check if the transaction was already submitted
+                                    if state
+                                        .db
+                                        .was_submitted(&mut session, txid.to_string(), output_index)
+                                        .await?
+                                    {
+                                        continue;
+                                    }
+
                                     state.logger.info(format!(
                                         "Processing output {}:{} with supported runes: [{}]",
                                         txid,
