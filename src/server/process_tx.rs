@@ -161,10 +161,6 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
         }
     }
 
-    if let Err(err) = session.commit_transaction().await {
-        return Err(anyhow::anyhow!("Database error: {:?}", err));
-    };
-
     if !tx_found {
         return Err(anyhow::anyhow!("Unable to find a matching deposit."));
     }
