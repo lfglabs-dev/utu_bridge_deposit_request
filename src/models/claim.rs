@@ -7,7 +7,7 @@ pub struct FordefiDepositData {
     pub rune_id_tx: Felt,
     pub amount: (Felt, Felt),
     pub tx_id: String,
-    pub tx_vout: Option<u64>,
+    pub tx_vout: usize,
     pub hashed_value: Felt,
     pub transaction_struct: Vec<Felt>,
     pub rune_contract: Felt,

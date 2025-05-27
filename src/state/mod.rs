@@ -1,4 +1,4 @@
-use bitcoin::BlockHash;
+use bitcoin::Block;
 use bitcoincore_rpc::Client;
 use mongodb::Database;
 use thiserror::Error;
@@ -42,7 +42,7 @@ pub struct AppState {
 }
 
 pub struct BlocksState {
-    hashes: Vec<BlockHash>,
+    hashes: Vec<Block>,
 }
 
 // required for axum_auto_routes
