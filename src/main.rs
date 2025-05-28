@@ -30,7 +30,7 @@ use utils::runes::log_supported_runes;
 
 lazy_static::lazy_static! {
     pub static ref ROUTE_REGISTRY: Mutex<Vec<Box<dyn WithState>>> = Mutex::new(Vec::new());
-    static ref MIN_CONFIRMATIONS: u64 = env::var("MIN_CONFIRMATIONS").expect("MIN_CONFIRMATIONS must be set").parse::<u64>().expect("MIN_CONFIRMATIONS must be a number");
+    static ref MIN_CONFIRMATIONS: i64 = env::var("MIN_CONFIRMATIONS").expect("MIN_CONFIRMATIONS must be set").parse::<i64>().expect("MIN_CONFIRMATIONS must be a number");
 }
 
 #[tokio::main]
@@ -165,53 +165,83 @@ async fn main() {
     let block_state = shared_state.clone();
     let block_task = tokio::spawn(async move {
         while let Some(block) = block_receiver.recv().await {
-            block_state.logger.debug(format!(
+            block_state.logger.info(format!(
                 "[{}] Notification received, processing block",
                 block.block_hash()
             ));
 
             let block_hash = block.block_hash();
-            let block_hash_value = match serde_json::to_value(block_hash) {
-                Ok(value) => value,
-                Err(e) => {
-                    block_state
-                        .logger
-                        .warning(format!("Failed to serialize block hash: {}", e));
-                    continue;
-                }
-            };
+            let processor = block_state.clone();
 
-            match block_state
-                .bitcoin_provider
-                .call::<BlockWithTransactions>("getblock", &[block_hash_value, 2.into()])
-            {
-                Ok(block_from_rpc) => {
-                    if block_from_rpc.confirmations >= *MIN_CONFIRMATIONS {
-                        block_state.logger.info(format!(
-                            "Processing block at height: {}",
-                            block_from_rpc.height
-                        ));
-                        let processor = block_state.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) =
-                                process_block::process_block(&processor, block_hash, block, true)
-                                    .await
-                            {
+            tokio::spawn(async move {
+                let mut attempts = 0;
+                let max_attempts = 5;
+
+                // Wait for confirmations before processing
+                loop {
+                    let block_hash_value = match serde_json::to_value(block_hash) {
+                        Ok(value) => value,
+                        Err(e) => {
+                            processor.logger.warning(format!(
+                                "[{}] Failed to serialize block hash: {}",
+                                block_hash, e
+                            ));
+                            return;
+                        }
+                    };
+
+                    match processor
+                        .bitcoin_provider
+                        .call::<BlockWithTransactions>("getblock", &[block_hash_value, 2.into()])
+                    {
+                        Ok(block_from_rpc) => {
+                            attempts = 0;
+                            if block_from_rpc.confirmations >= *MIN_CONFIRMATIONS {
+                                processor.logger.info(format!(
+                                    "[{}] Processing block at height: {} with {} confirmations",
+                                    block_hash, block_from_rpc.height, block_from_rpc.confirmations
+                                ));
+
+                                if let Err(e) = process_block::process_block(
+                                    &processor, block_hash, block, true,
+                                )
+                                .await
+                                {
+                                    processor.logger.severe(format!(
+                                        "[{}] Error in process_block: {}",
+                                        block_hash, e
+                                    ));
+                                }
+                                return; // Done processing this block
+                            } else if block_from_rpc.confirmations == -1 {
+                                // block not included in the main chain
+                                processor.logger.warning(format!(
+                                    "[{}] Block was not integrated (confirmations = -1), stopping task",
+                                    block_hash
+                                ));
+                                return; // Stop task for this block
+                            } else {
+                                sleep(Duration::from_secs(60)).await;
+                            }
+                        }
+                        Err(e) => {
+                            processor.logger.warning(format!(
+                                "[{}] Failed to get block from RPC: {}, retrying in 1 minute",
+                                block_hash, e
+                            ));
+                            attempts += 1;
+                            if attempts > max_attempts {
                                 processor.logger.severe(format!(
-                                    "[{}] Error in process_block: {}",
+                                    "[{}] Failed to get block from RPC: {}, stopping task",
                                     block_hash, e
                                 ));
+                                return; // Stop task for this block
                             }
-                        });
+                            sleep(Duration::from_secs(60)).await;
+                        }
                     }
                 }
-                Err(e) => {
-                    block_state.logger.warning(format!(
-                        "[{}] Failed to get block from RPC: {}",
-                        block_hash, e
-                    ));
-                }
-            }
+            });
         }
     });
 
