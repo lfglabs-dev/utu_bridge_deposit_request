@@ -186,7 +186,7 @@ async fn main() {
                 .call::<BlockWithTransactions>("getblock", &[block_hash_value, 2.into()])
             {
                 Ok(block_from_rpc) => {
-                    if block_from_rpc.confirmations >= 1 {
+                    if block_from_rpc.confirmations >= *MIN_CONFIRMATIONS {
                         block_state.logger.info(format!(
                             "Processing block at height: {}",
                             block_from_rpc.height
