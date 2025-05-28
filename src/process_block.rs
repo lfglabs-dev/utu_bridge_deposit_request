@@ -50,9 +50,6 @@ pub async fn process_block(
             ));
         }
     };
-    if let Err(err) = session.start_transaction().await {
-        return Err(anyhow::anyhow!("Database error: {:?}", err));
-    };
 
     let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
     let mut tx_found = false;
@@ -165,14 +162,6 @@ pub async fn process_block(
     state
         .logger
         .info(format!("[{}] Completed processing block", block_hash));
-
-    if let Err(err) = session.commit_transaction().await {
-        return Err(anyhow::anyhow!(
-            "[{}] Database error: {:?}",
-            block_hash,
-            err
-        ));
-    };
 
     if main_loop || tx_found {
         Ok(())

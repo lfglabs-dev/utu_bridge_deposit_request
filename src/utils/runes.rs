@@ -15,9 +15,6 @@ pub async fn get_supported_runes_vec(
             ));
         }
     };
-    if let Err(err) = session.start_transaction().await {
-        return Err(anyhow::anyhow!("Database error: {:?}", err));
-    };
 
     let supported_runes_array = state
         .db
@@ -46,9 +43,6 @@ pub async fn log_supported_runes(state: &Arc<AppState>) -> Result<()> {
                 "Database error: unable to start session".to_string()
             ));
         }
-    };
-    if let Err(err) = session.start_transaction().await {
-        return Err(anyhow::anyhow!("Database error: {:?}", err));
     };
 
     let supported_runes = state
