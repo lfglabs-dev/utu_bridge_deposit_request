@@ -14,7 +14,6 @@ use bitcoin::Block;
 use bitcoincore_rpc::RpcApi;
 use models::blocks::BlockWithTransactions;
 use mongodb::bson::doc;
-use state::blocks::BlockStateTrait;
 use state::init::AppStateTraitInitializer;
 use state::AppState;
 use state::WithState;
@@ -98,14 +97,17 @@ async fn main() {
         .set_subscribe(b"rawblock")
         .expect("Failed to subscribe to hashblock");
 
+    let (block_sender, mut block_receiver) = tokio::sync::mpsc::channel::<Block>(100); // Buffer size of 100
+
     let zmq_state = shared_state.clone();
+    let zmq_sender = block_sender.clone();
     let zmq_task = tokio::spawn(async move {
         loop {
             // Wait for a message from the socket
             match subscriber.recv_msg(0) {
                 Ok(topic) => {
                     if topic.as_str() == Some("rawblock") {
-                        zmq_state.logger.debug("Received raw block");
+                        zmq_state.logger.info("Received raw block");
                         let raw_block_msg =
                             subscriber.recv_msg(0).expect("Failed to receive raw block");
 
@@ -122,7 +124,7 @@ async fn main() {
                                 }
                             };
 
-                        zmq_state.logger.debug("Deserializing raw block");
+                        zmq_state.logger.info("Deserializing raw block");
 
                         match deserialize::<Block>(&raw_block_data) {
                             Ok(block) => {
@@ -132,28 +134,17 @@ async fn main() {
                                 } else {
                                     "unknown".to_string()
                                 };
-                                zmq_state.logger.debug(format!(
+                                zmq_state.logger.info(format!(
                                     "Received block (height: {}) | Hash: {}",
                                     block_height, block_hash
                                 ));
 
-                                // let is_included = zmq_state
-                                //     .with_blocks_read(|blocks| {
-                                //         let block_hashes = blocks.get_blocks();
-                                //         block_hashes.contains(&(block_hash, block))
-                                //     })
-                                //     .await;
-
-                                // if is_included {
-                                //     continue;
-                                // }
-
-                                zmq_state
-                                    .with_blocks(|blocks| {
-                                        blocks.add_block(block);
-                                    })
-                                    .await;
-                                zmq_state.notifier.notify_one();
+                                if let Err(e) = zmq_sender.send(block).await {
+                                    zmq_state.logger.warning(format!(
+                                        "Failed to send block to processor: {}",
+                                        e
+                                    ));
+                                }
                             }
                             Err(e) => {
                                 // Handle deserialization errors
@@ -173,63 +164,52 @@ async fn main() {
 
     let block_state = shared_state.clone();
     let block_task = tokio::spawn(async move {
-        loop {
-            // Wait for changes in the blocks
-            block_state.notifier.notified().await;
+        while let Some(block) = block_receiver.recv().await {
+            block_state.logger.debug(format!(
+                "[{}] Notification received, processing block",
+                block.block_hash()
+            ));
 
-            if block_state
-                .with_blocks_read(|blocks| blocks.has_blocks())
-                .await
+            let block_hash = block.block_hash();
+            let block_hash_value = match serde_json::to_value(block_hash) {
+                Ok(value) => value,
+                Err(e) => {
+                    block_state
+                        .logger
+                        .warning(format!("Failed to serialize block hash: {}", e));
+                    continue;
+                }
+            };
+
+            match block_state
+                .bitcoin_provider
+                .call::<BlockWithTransactions>("getblock", &[block_hash_value, 2.into()])
             {
-                block_state.logger.debug("Notified, processing blocks");
-                let blocks = block_state
-                    .with_blocks_read(|blocks| blocks.get_blocks())
-                    .await;
-
-                for block in blocks {
-                    // Handle block hash serialization with proper error handling
-                    let block_hash_value = match serde_json::to_value(block.block_hash()) {
-                        Ok(value) => value,
-                        Err(e) => {
-                            block_state
-                                .logger
-                                .warning(format!("Failed to serialize block hash: {}", e));
-                            continue; // Skip this block and continue with the next one
-                        }
-                    };
-
-                    match block_state
-                        .bitcoin_provider
-                        .call::<BlockWithTransactions>("getblock", &[block_hash_value, 2.into()])
-                    {
-                        Ok(block_from_rpc) => {
-                            if block_from_rpc.confirmations >= *MIN_CONFIRMATIONS {
-                                block_state.logger.info(format!(
-                                    "Processing block at height: {}",
-                                    block_from_rpc.height
+                Ok(block_from_rpc) => {
+                    if block_from_rpc.confirmations >= 1 {
+                        block_state.logger.info(format!(
+                            "Processing block at height: {}",
+                            block_from_rpc.height
+                        ));
+                        let processor = block_state.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) =
+                                process_block::process_block(&processor, block_hash, block, true)
+                                    .await
+                            {
+                                processor.logger.severe(format!(
+                                    "[{}] Error in process_block: {}",
+                                    block_hash, e
                                 ));
-                                if let Err(e) = process_block::process_block(
-                                    &block_state,
-                                    block.block_hash(),
-                                    block.clone(),
-                                    true,
-                                )
-                                .await
-                                {
-                                    block_state
-                                        .logger
-                                        .severe(format!("Failed to process block: {}", e));
-                                }
-                                // We remove the block from the state
-                                block_state
-                                    .with_blocks(|blocks| {
-                                        blocks.remove_block(block.block_hash());
-                                    })
-                                    .await;
                             }
-                        }
-                        Err(e) => eprintln!("Failed to get block: {}", e),
+                        });
                     }
+                }
+                Err(e) => {
+                    block_state.logger.warning(format!(
+                        "[{}] Failed to get block from RPC: {}",
+                        block_hash, e
+                    ));
                 }
             }
         }

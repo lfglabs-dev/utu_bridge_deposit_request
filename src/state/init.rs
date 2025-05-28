@@ -3,13 +3,9 @@ use std::{env, sync::Arc};
 use bitcoin::Network;
 use bitcoincore_rpc::Auth;
 use mongodb::options::ClientOptions;
-use tokio::sync::{Notify, RwLock};
 use utu_bridge_types::bitcoin::BitcoinAddress;
 
-use crate::{
-    logger::Logger,
-    state::{blocks::BlockStateTrait, AppState, BlocksState},
-};
+use crate::{logger::Logger, state::AppState};
 
 pub trait AppStateTraitInitializer {
     async fn load() -> Arc<Self>;
@@ -70,8 +66,6 @@ impl AppStateTraitInitializer for AppState {
             logger,
             db,
             bitcoin_provider,
-            blocks: RwLock::new(<BlocksState>::init()),
-            notifier: Notify::new(),
             blacklisted_deposit_addr,
         })
     }

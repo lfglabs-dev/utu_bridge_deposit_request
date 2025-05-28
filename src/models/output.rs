@@ -33,7 +33,7 @@ pub struct OrdOutputResult {
 pub struct OrdRune {
     pub amount: u128,
     pub divisibility: u8,
-    pub symbol: String,
+    pub symbol: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

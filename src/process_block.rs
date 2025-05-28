@@ -5,7 +5,6 @@ use bitcoin::{Address, Block, BlockHash, Network, Txid};
 use bitcoincore_rpc::{json::GetRawTransactionResult, RpcApi};
 use mongodb::{bson::DateTime, ClientSession};
 use reqwest::Client;
-use tokio::time::sleep;
 use utu_bridge_types::{
     bitcoin::{BitcoinAddress, BitcoinRuneId, BitcoinTxId},
     starknet::StarknetAddress,
@@ -58,8 +57,23 @@ pub async fn process_block(
     let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
     let mut tx_found = false;
 
+    state.logger.info(format!(
+        "[{}] Processing {} transactions",
+        block_hash,
+        block.txdata.len()
+    ));
+
     // parse to all the outputs, and check the ones that concerns us
-    for tx in block.txdata.iter() {
+    for (tx_index, tx) in block.txdata.iter().enumerate() {
+        // Log progress every 100 transactions
+        if tx_index % 100 == 0 {
+            state.logger.info(format!(
+                "[{}] Progress: {}/{} transactions processed",
+                block_hash,
+                tx_index,
+                block.txdata.len()
+            ));
+        }
         for (output_index, vout) in tx.output.iter().enumerate() {
             // Check on ord if the output contains supported runes
             let txid = tx.compute_txid();
@@ -139,17 +153,25 @@ pub async fn process_block(
                     ));
                 }
             }
-
-            sleep(Duration::from_millis(*ORD_TIMEOUT_MS)).await;
         }
     }
 
+    state.logger.info(format!(
+        "[{}] Completed processing all {} transactions",
+        block_hash,
+        block.txdata.len()
+    ));
+
     state
         .logger
-        .info(format!("Completed processing block: {}", block_hash));
+        .info(format!("[{}] Completed processing block", block_hash));
 
     if let Err(err) = session.commit_transaction().await {
-        return Err(anyhow::anyhow!("Database error: {:?}", err));
+        return Err(anyhow::anyhow!(
+            "[{}] Database error: {:?}",
+            block_hash,
+            err
+        ));
     };
 
     if main_loop || tx_found {
