@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockWithTransactions {
     pub hash: String,
-    pub confirmations: u64,
+    pub confirmations: i64,
     pub height: u64,
     pub version: u64,
     #[serde(rename = "versionHex")]
