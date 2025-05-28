@@ -83,10 +83,7 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
         Err(e) => return Err(anyhow::anyhow!("Error while fetching transaction: {:?}", e)),
     };
 
-    let tx_info = state.bitcoin_provider.get_transaction(&txid, None)?;
-    let block_hash = tx_info.info.blockhash.unwrap_or(BlockHash::from_str(
-        "0000000000000000000000000000000000000000000000000000000000000000",
-    )?);
+    let block_hash = get_block_hash(state, tx_id.clone()).await?;
 
     for (output_index, vout) in tx.output.iter().enumerate() {
         let ord_data = get_ord_data(txid.to_string(), output_index).await?;
@@ -109,6 +106,19 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
                     if let Ok(starknet_addr) =
                         state.db.is_deposit_addr(btc_receiver_address.clone()).await
                     {
+                        // Check if the transaction was already submitted
+                        if state
+                            .db
+                            .was_submitted(&mut session, txid.to_string(), output_index)
+                            .await?
+                        {
+                            state.logger.debug(format!(
+                                "Transaction already submitted: {}:{}. Skipping...",
+                                txid, output_index
+                            ));
+                            continue;
+                        }
+
                         state.logger.info(format!(
                             "Processing output {}:{} with supported runes: [{}]",
                             txid,
@@ -151,13 +161,20 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
         }
     }
 
-    if let Err(err) = session.commit_transaction().await {
-        return Err(anyhow::anyhow!("Database error: {:?}", err));
-    };
-
     if !tx_found {
         return Err(anyhow::anyhow!("Unable to find a matching deposit."));
     }
 
     Ok(())
+}
+
+async fn get_block_hash(state: &Arc<AppState>, tx_id: String) -> Result<BlockHash> {
+    let txid = Txid::from_str(&tx_id)?;
+    let tx = state
+        .bitcoin_provider
+        .get_raw_transaction_info(&txid, None)?;
+
+    let block_hash = tx.blockhash.ok_or(anyhow::anyhow!("No block hash found"))?;
+
+    Ok(block_hash)
 }
