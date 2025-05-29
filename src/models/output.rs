@@ -1,19 +1,11 @@
 use std::collections::HashMap;
 
-use bitcoin::Transaction;
 use serde::{Deserialize, Serialize};
 use utu_bridge_types::{
     bitcoin::{BitcoinAddress, BitcoinOutpoint, BitcoinTxId},
     starknet::StarknetAddress,
     ClaimedRunesDepositsDocument, DepositClaimTxsDocument,
 };
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OutputToProcess {
-    pub output_index: usize,
-    pub tx: Transaction,
-    pub starknet_addr: StarknetAddress,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrdOutputResult {
@@ -41,4 +33,13 @@ pub struct VerifyDeposit {
     pub bitcoin_deposit_address: Option<BitcoinAddress>,
     pub claimed_runes_deposits: Vec<ClaimedRunesDepositsDocument>,
     pub deposit_claim_txs: Vec<DepositClaimTxsDocument>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputToProcess {
+    pub rune_spaced_name: String,
+    pub rune_data: OrdRune,
+    pub txid: String,
+    pub output_index: usize,
+    pub starknet_addr: StarknetAddress,
 }
