@@ -41,6 +41,7 @@ pub async fn process_block(
     block_hash: BlockHash,
     block: Block,
     main_loop: bool,
+    block_height: u64,
 ) -> Result<()> {
     let mut session = match state.db.client().start_session().await {
         Ok(session) => session,
@@ -54,9 +55,15 @@ pub async fn process_block(
     let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
     let mut tx_found = false;
 
+    let log_prefix = if main_loop {
+        format!("[{}]", block_height)
+    } else {
+        format!("[{}|process_block]", block_height)
+    };
+
     state.logger.info(format!(
         "[{}] Processing {} transactions",
-        block_hash,
+        log_prefix,
         block.txdata.len()
     ));
 
@@ -64,9 +71,11 @@ pub async fn process_block(
     for (tx_index, tx) in block.txdata.iter().enumerate() {
         // Log progress every 100 transactions
         if tx_index % 100 == 0 {
+            let percentage = (tx_index * 100) / block.txdata.len();
             state.logger.info(format!(
-                "[{}] Progress: {}/{} transactions processed",
-                block_hash,
+                "[{}] Progress: {}%, processed {} out of {} transactions",
+                log_prefix,
+                percentage,
                 tx_index,
                 block.txdata.len()
             ));
@@ -107,7 +116,8 @@ pub async fn process_block(
                                     }
 
                                     state.logger.info(format!(
-                                        "Processing output {}:{} with supported runes: [{}]",
+                                        "[{}] Processing output {}:{} with supported runes: [{}]",
+                                        log_prefix,
                                         txid,
                                         output_index,
                                         ord_data
@@ -132,8 +142,8 @@ pub async fn process_block(
                                     .await
                                     {
                                         state.logger.warning(format!(
-                                        "Failed to process deposit transaction {}:{} with error: {:?}",
-                                        txid, output_index, e
+                                        "Failed to process deposit transaction {}:{} at block height {} with error: {:?}",
+                                        txid, output_index, block_height, e
                                     ));
                                     } else {
                                         tx_found = true;
@@ -145,8 +155,8 @@ pub async fn process_block(
                 }
                 Err(err) => {
                     state.logger.warning(format!(
-                        "Failed to get ord data for txid: {} and output_index: {} with error: {:?}",
-                        txid, output_index, err
+                        "Failed to get ord data for txid: {} and output_index: {} at block height {} with error: {:?}",
+                        txid, output_index, block_height, err
                     ));
                 }
             }
@@ -155,20 +165,20 @@ pub async fn process_block(
 
     state.logger.info(format!(
         "[{}] Completed processing all {} transactions",
-        block_hash,
+        log_prefix,
         block.txdata.len()
     ));
 
     state
         .logger
-        .info(format!("[{}] Completed processing block", block_hash));
+        .info(format!("[{}] Completed processing block", log_prefix));
 
     if main_loop || tx_found {
         Ok(())
     } else {
         Err(anyhow::anyhow!(format!(
             "Unable to find any matching deposits in block: {}",
-            block_hash
+            block_height
         )))
     }
 }

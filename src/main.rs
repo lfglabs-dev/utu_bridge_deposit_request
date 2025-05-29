@@ -198,12 +198,16 @@ async fn main() {
                             attempts = 0;
                             if block_from_rpc.confirmations >= *MIN_CONFIRMATIONS {
                                 processor.logger.info(format!(
-                                    "[{}] Processing block at height: {} with {} confirmations",
-                                    block_hash, block_from_rpc.height, block_from_rpc.confirmations
+                                    "Processing block (height: {}) | Hash: {}",
+                                    block_from_rpc.height, block_hash
                                 ));
 
                                 if let Err(e) = process_block::process_block(
-                                    &processor, block_hash, block, true,
+                                    &processor,
+                                    block_hash,
+                                    block,
+                                    true,
+                                    block_from_rpc.height,
                                 )
                                 .await
                                 {
