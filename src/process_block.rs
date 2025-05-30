@@ -34,6 +34,8 @@ lazy_static::lazy_static! {
     static ref FORDEFI_DEPOSIT_VAULT_ID: String = env::var("FORDEFI_DEPOSIT_VAULT_ID").expect("FORDEFI_DEPOSIT_VAULT_ID must be set");
     static ref MIN_CONFIRMATIONS: i64 = env::var("MIN_CONFIRMATIONS").expect("MIN_CONFIRMATIONS must be set").parse::<i64>().expect("MIN_CONFIRMATIONS must be a valid i64");
     static ref POLLING_BLOCK_DELAY_SEC: u64 = env::var("POLLING_BLOCK_DELAY_SEC").expect("POLLING_BLOCK_DELAY_SEC must be set").parse::<u64>().expect("POLLING_BLOCK_DELAY_SEC must be a valid u64");
+    static ref ORD_API_RETRY_DELAY_SEC: u64 = env::var("ORD_API_RETRY_DELAY_SEC").expect("ORD_API_RETRY_DELAY_SEC must be set").parse::<u64>().expect("ORD_API_RETRY_DELAY_SEC must be a valid u64");
+    static ref ORD_API_RETRY_MAX_ATTEMPTS: u64 = env::var("ORD_API_RETRY_MAX_ATTEMPTS").expect("ORD_API_RETRY_MAX_ATTEMPTS must be set").parse::<u64>().expect("ORD_API_RETRY_MAX_ATTEMPTS must be a valid u64");
 }
 
 pub async fn get_block_from_rpc(
@@ -261,23 +263,42 @@ fn fetch_bitcoin_transaction_info(
 
 /// Queries the ord API to get the number of runes in a given output
 pub async fn get_ord_data(txid: String, vout: usize) -> Result<OrdOutputResult> {
-    let url = format!("https://{}/output/{}:{}", *ORD_NODE_URL, txid, vout);
+    let mut attempts = 0;
+    loop {
+        let url = format!("https://{}/output/{}:{}", *ORD_NODE_URL, txid, vout);
 
-    let response = HTTP_CLIENT
-        .get(&url)
-        .header("Accept", "application/json")
-        .send()
-        .await?;
-
-    if !response.status().is_success() {
-        return Err(anyhow::anyhow!(
-            "Failed to query ord API for {}:{}, status: {}",
-            txid,
-            vout,
-            response.status()
-        ));
+        match HTTP_CLIENT
+            .get(&url)
+            .header("Accept", "application/json")
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    attempts += 1;
+                    if attempts > *ORD_API_RETRY_MAX_ATTEMPTS {
+                        return Err(anyhow::anyhow!(
+                            "Failed to query ord API for {}:{}, status: {}",
+                            txid,
+                            vout,
+                            response.status()
+                        ));
+                    }
+                    let delay = *ORD_API_RETRY_DELAY_SEC * (2_u64.pow(attempts as u32));
+                    sleep(Duration::from_secs(delay)).await;
+                    continue;
+                }
+                let ord_output: OrdOutputResult = response.json().await?;
+                return Ok(ord_output);
+            }
+            Err(err) => {
+                attempts += 1;
+                if attempts > *ORD_API_RETRY_MAX_ATTEMPTS {
+                    return Err(anyhow::anyhow!(err));
+                }
+                let delay = *ORD_API_RETRY_DELAY_SEC * (2_u64.pow(attempts as u32));
+                sleep(Duration::from_secs(delay)).await;
+            }
+        }
     }
-
-    let ord_output: OrdOutputResult = response.json().await?;
-    Ok(ord_output)
 }
