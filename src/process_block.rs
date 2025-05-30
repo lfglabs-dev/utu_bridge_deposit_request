@@ -5,22 +5,20 @@ use bitcoin::{Address, Block, BlockHash, Network, Txid};
 use bitcoincore_rpc::{json::GetRawTransactionResult, RpcApi};
 use mongodb::{bson::DateTime, ClientSession};
 use reqwest::Client;
-use utu_bridge_types::{
-    bitcoin::{BitcoinAddress, BitcoinRuneId, BitcoinTxId},
-    starknet::StarknetAddress,
-};
+use tokio::time::sleep;
+use utu_bridge_types::bitcoin::{BitcoinAddress, BitcoinRuneId, BitcoinTxId};
 
 use crate::{
     models::{
+        blocks::BlockWithTransactions,
         claim::FordefiDepositData,
         monitor::{FordefiId, FordefiTransaction, TransactionType},
-        output::OrdOutputResult,
+        output::{OrdOutputResult, OutputToProcess},
     },
     state::{database::DatabaseExt, AppState},
     utils::{
         calldata::get_transaction_struct_felt,
         fordefi::send_fordefi_request,
-        runes::get_supported_runes_vec,
         starknet::{compute_hashed_value, compute_rune_contract},
     },
 };
@@ -34,29 +32,46 @@ lazy_static::lazy_static! {
         .build()
         .expect("Failed to create HTTP client");
     static ref FORDEFI_DEPOSIT_VAULT_ID: String = env::var("FORDEFI_DEPOSIT_VAULT_ID").expect("FORDEFI_DEPOSIT_VAULT_ID must be set");
+    static ref MIN_CONFIRMATIONS: i64 = env::var("MIN_CONFIRMATIONS").expect("MIN_CONFIRMATIONS must be set").parse::<i64>().expect("MIN_CONFIRMATIONS must be a valid i64");
+    static ref POLLING_BLOCK_DELAY_SEC: u64 = env::var("POLLING_BLOCK_DELAY_SEC").expect("POLLING_BLOCK_DELAY_SEC must be set").parse::<u64>().expect("POLLING_BLOCK_DELAY_SEC must be a valid u64");
 }
 
-pub async fn process_block(
+pub async fn get_block_from_rpc(
     state: &Arc<AppState>,
-    block_hash: BlockHash,
-    block: Block,
-    main_loop: bool,
-) -> Result<()> {
-    let mut session = match state.db.client().start_session().await {
-        Ok(session) => session,
-        Err(_) => {
-            return Err(anyhow::anyhow!(
-                "Database error: unable to start session".to_string()
-            ));
-        }
-    };
+    block_hash_value: serde_json::Value,
+) -> Result<BlockWithTransactions> {
+    let mut attempts = 0;
+    let max_attempts = 3;
+    loop {
+        match state
+            .bitcoin_provider
+            .call::<BlockWithTransactions>("getblock", &[block_hash_value.clone(), 2.into()])
+        {
+            Ok(block_from_rpc) => return Ok(block_from_rpc),
+            Err(e) => {
+                attempts += 1;
+                if attempts > max_attempts {
+                    return Err(anyhow::anyhow!(e));
+                }
+                sleep(Duration::from_secs(*POLLING_BLOCK_DELAY_SEC)).await;
+                continue;
+            }
+        };
+    }
+}
 
-    let (supported_runes, runes_mapping) = get_supported_runes_vec(state).await?;
-    let mut tx_found = false;
+pub async fn parse_block(
+    state: &Arc<AppState>,
+    session: &mut ClientSession,
+    block_height: u64,
+    block: Block,
+    supported_runes: Vec<String>,
+) -> Result<Vec<OutputToProcess>> {
+    let mut outputs_to_process: Vec<OutputToProcess> = vec![];
 
     state.logger.info(format!(
         "[{}] Processing {} transactions",
-        block_hash,
+        block_height,
         block.txdata.len()
     ));
 
@@ -64,13 +79,16 @@ pub async fn process_block(
     for (tx_index, tx) in block.txdata.iter().enumerate() {
         // Log progress every 100 transactions
         if tx_index % 100 == 0 {
+            let percentage = (tx_index * 100) / block.txdata.len();
             state.logger.info(format!(
-                "[{}] Progress: {}/{} transactions processed",
-                block_hash,
+                "[{}] Progress: {}%, processed {} out of {} transactions",
+                block_height,
+                percentage,
                 tx_index,
                 block.txdata.len()
             ));
         }
+
         for (output_index, vout) in tx.output.iter().enumerate() {
             // Check on ord if the output contains supported runes
             let txid = tx.compute_txid();
@@ -100,44 +118,19 @@ pub async fn process_block(
                                     // Check if the transaction was already submitted
                                     if state
                                         .db
-                                        .was_submitted(&mut session, txid.to_string(), output_index)
+                                        .was_submitted(session, txid.to_string(), output_index)
                                         .await?
                                     {
                                         continue;
                                     }
 
-                                    state.logger.info(format!(
-                                        "Processing output {}:{} with supported runes: [{}]",
-                                        txid,
-                                        output_index,
-                                        ord_data
-                                            .runes
-                                            .keys()
-                                            .cloned()
-                                            .collect::<Vec<String>>()
-                                            .join(", ")
-                                    ));
-
-                                    if let Err(e) = process_deposit_transaction(
-                                        state,
-                                        &mut session,
+                                    outputs_to_process.push(OutputToProcess {
                                         rune_spaced_name,
-                                        rune_data.amount,
-                                        txid.to_string(),
+                                        rune_data,
+                                        txid: txid.to_string(),
                                         output_index,
-                                        &starknet_addr,
-                                        &block_hash,
-                                        &runes_mapping,
-                                    )
-                                    .await
-                                    {
-                                        state.logger.warning(format!(
-                                        "Failed to process deposit transaction {}:{} with error: {:?}",
-                                        txid, output_index, e
-                                    ));
-                                    } else {
-                                        tx_found = true;
-                                    }
+                                        starknet_addr,
+                                    });
                                 }
                             }
                         }
@@ -145,64 +138,62 @@ pub async fn process_block(
                 }
                 Err(err) => {
                     state.logger.warning(format!(
-                        "Failed to get ord data for txid: {} and output_index: {} with error: {:?}",
-                        txid, output_index, err
+                        "[{}] Failed to get ord data for txid: {} and output_index: {} with error: {:?}",
+                        block_height, txid, output_index, err
                     ));
                 }
             }
         }
     }
+    Ok(outputs_to_process)
+}
 
-    state.logger.info(format!(
-        "[{}] Completed processing all {} transactions",
-        block_hash,
-        block.txdata.len()
-    ));
-
-    state
-        .logger
-        .info(format!("[{}] Completed processing block", block_hash));
-
-    if main_loop || tx_found {
-        Ok(())
-    } else {
-        Err(anyhow::anyhow!(format!(
-            "Unable to find any matching deposits in block: {}",
-            block_hash
-        )))
+pub async fn wait_for_block_confirmation(
+    state: &Arc<AppState>,
+    block_hash_value: serde_json::Value,
+) -> Result<()> {
+    loop {
+        let block_from_rpc = get_block_from_rpc(state, block_hash_value.clone()).await?;
+        if block_from_rpc.confirmations >= *MIN_CONFIRMATIONS {
+            return Ok(());
+        } else if block_from_rpc.confirmations == -1 {
+            return Err(anyhow::anyhow!(
+                "Block was not integrated (confirmations = -1), stopping task"
+            ));
+        } else {
+            sleep(Duration::from_secs(*POLLING_BLOCK_DELAY_SEC)).await;
+        }
     }
 }
 
-/// Processes a valid deposit transaction.
-#[allow(clippy::too_many_arguments)]
-pub async fn process_deposit_transaction(
+pub async fn process_output(
     state: &Arc<AppState>,
     session: &mut ClientSession,
-    rune_name: String,
-    amount: u128,
-    txid: String,
-    vout: usize,
-    starknet_addr: &StarknetAddress,
-    block_hash: &BlockHash,
+    output: OutputToProcess,
+    block_hash: BlockHash,
     runes_mapping: &HashMap<String, (BitcoinRuneId, u32)>,
 ) -> Result<()> {
     // Compute hash_value needed for fordefi signature
     let (hashed_value, rune_id_block_felt, rune_id_tx_felt, amount_u256) = if let Ok(hashed_value) =
         compute_hashed_value(
             runes_mapping,
-            rune_name.clone(),
-            amount,
-            &txid,
-            starknet_addr,
+            output.rune_spaced_name.clone(),
+            output.rune_data.amount,
+            &output.txid,
+            &output.starknet_addr,
         ) {
         hashed_value
     } else {
-        return Err(anyhow::anyhow!("Failed to compute hashed value"));
+        return Err(anyhow::anyhow!(
+            "Failed to compute hashed value for output: {}:{}",
+            output.txid,
+            output.output_index
+        ));
     };
 
     // Retrieve the complete transaction from bitcoin RPC
     // We need it to build the starknet transaction.
-    match fetch_bitcoin_transaction_info(state, &txid, block_hash) {
+    match fetch_bitcoin_transaction_info(state, &output.txid, &block_hash) {
         Ok(tx_info) => {
             let transaction_struct = get_transaction_struct_felt(&state.bitcoin_provider, tx_info);
 
@@ -212,11 +203,11 @@ pub async fn process_deposit_transaction(
                 rune_id_tx: rune_id_tx_felt,
                 amount: amount_u256,
                 hashed_value,
-                tx_id: txid.clone(),
-                tx_vout: vout,
+                tx_id: output.txid.clone(),
+                tx_vout: output.output_index,
                 transaction_struct,
                 rune_contract: compute_rune_contract(rune_id_block_felt, rune_id_tx_felt),
-                starknet_addr: starknet_addr.to_string(),
+                starknet_addr: output.starknet_addr.to_string(),
                 vault_id: FORDEFI_DEPOSIT_VAULT_ID.clone(),
             };
 
@@ -227,7 +218,7 @@ pub async fn process_deposit_transaction(
                         .debug(format!("Processed with Fordefi tx-id: {}", fordefi_id));
                     // store the fordefi_id in the database
                     let fordefi_tx = FordefiTransaction {
-                        btc_txid: BitcoinTxId::new(&txid).unwrap(),
+                        btc_txid: BitcoinTxId::new(&output.txid).unwrap(),
                         fordefi_ids: vec![FordefiId {
                             id: fordefi_id,
                             vault_id: FORDEFI_DEPOSIT_VAULT_ID.clone(),
@@ -240,7 +231,7 @@ pub async fn process_deposit_transaction(
                 Err(err) => {
                     state.logger.severe(format!(
                         "Failed to send fordefi request for txid: {}:{} with error: {:?}",
-                        txid, vout, err
+                        output.txid, output.output_index, err
                     ));
                 }
             }
@@ -248,10 +239,11 @@ pub async fn process_deposit_transaction(
         Err(err) => {
             state.logger.warning(format!(
                 "Failed to retrieve transaction data for txid: {}:{} with error: {:?}",
-                txid, vout, err
+                output.txid, output.output_index, err
             ));
         }
     }
+
     Ok(())
 }
 

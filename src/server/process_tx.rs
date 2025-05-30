@@ -5,7 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use utu_bridge_types::bitcoin::BitcoinAddress;
 
-use crate::process_block::{get_ord_data, process_deposit_transaction};
+use crate::models::output::OutputToProcess;
+use crate::process_block::{get_ord_data, process_output};
 use crate::server::responses::{ApiResponse, Status};
 use crate::state::database::DatabaseExt;
 use crate::state::AppState;
@@ -112,15 +113,15 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
                             .was_submitted(&mut session, txid.to_string(), output_index)
                             .await?
                         {
-                            state.logger.debug(format!(
-                                "Transaction already submitted: {}:{}. Skipping...",
+                            state.logger.info(format!(
+                                "[process_tx] Transaction already submitted: {}:{}. Skipping...",
                                 txid, output_index
                             ));
                             continue;
                         }
 
                         state.logger.info(format!(
-                            "Processing output {}:{} with supported runes: [{}]",
+                            "[process_tx] Processing output {}:{} with supported runes: [{}]",
                             txid,
                             output_index,
                             ord_data
@@ -131,27 +132,29 @@ async fn process_tx(state: &Arc<AppState>, tx_id: String) -> Result<()> {
                                 .join(", ")
                         ));
 
-                        if let Err(e) = process_deposit_transaction(
+                        if let Err(e) = process_output(
                             state,
                             &mut session,
-                            rune_spaced_name,
-                            rune_data.amount,
-                            txid.to_string(),
-                            output_index,
-                            &starknet_addr,
-                            &block_hash,
+                            OutputToProcess {
+                                rune_spaced_name,
+                                rune_data,
+                                txid: txid.to_string(),
+                                output_index,
+                                starknet_addr,
+                            },
+                            block_hash,
                             &runes_mapping,
                         )
                         .await
                         {
                             state.logger.warning(format!(
-                                "Failed to process deposit transaction {}:{} with error: {:?}",
+                                "[process_tx] Failed to process deposit transaction {}:{} with error: {:?}",
                                 txid, output_index, e
                             ));
                         } else {
                             tx_found = true;
                             state.logger.info(format!(
-                                "Processed deposit transaction for tx_id: {}",
+                                "[process_tx] Processed deposit transaction for tx_id: {}",
                                 tx_id
                             ));
                         }

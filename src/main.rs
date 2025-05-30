@@ -11,9 +11,10 @@ use axum::Router;
 use axum_auto_routes::route;
 use bitcoin::consensus::deserialize;
 use bitcoin::Block;
-use bitcoincore_rpc::RpcApi;
-use models::blocks::BlockWithTransactions;
 use mongodb::bson::doc;
+use process_block::get_block_from_rpc;
+use process_block::process_output;
+use process_block::wait_for_block_confirmation;
 use state::init::AppStateTraitInitializer;
 use state::AppState;
 use state::WithState;
@@ -26,11 +27,11 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tower_http::cors;
 use tower_http::cors::CorsLayer;
+use utils::runes::get_supported_runes_vec;
 use utils::runes::log_supported_runes;
 
 lazy_static::lazy_static! {
     pub static ref ROUTE_REGISTRY: Mutex<Vec<Box<dyn WithState>>> = Mutex::new(Vec::new());
-    static ref MIN_CONFIRMATIONS: i64 = env::var("MIN_CONFIRMATIONS").expect("MIN_CONFIRMATIONS must be set").parse::<i64>().expect("MIN_CONFIRMATIONS must be a number");
 }
 
 #[tokio::main]
@@ -174,73 +175,127 @@ async fn main() {
             let processor = block_state.clone();
 
             tokio::spawn(async move {
-                let mut attempts = 0;
-                let max_attempts = 5;
+                let mut session = match processor.db.client().start_session().await {
+                    Ok(session) => session,
+                    Err(_) => {
+                        processor.logger.severe(format!(
+                            "[{}] Database error: unable to start session when processing block",
+                            block_hash
+                        ));
+                        return;
+                    }
+                };
 
-                // Wait for confirmations before processing
-                loop {
-                    let block_hash_value = match serde_json::to_value(block_hash) {
-                        Ok(value) => value,
+                let block_hash_value = match serde_json::to_value(block_hash) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        processor.logger.warning(format!(
+                            "[{}] Failed to serialize block hash: {}",
+                            block_hash, e
+                        ));
+                        return;
+                    }
+                };
+
+                let (supported_runes, runes_mapping) =
+                    match get_supported_runes_vec(&processor).await {
+                        Ok(runes) => runes,
                         Err(e) => {
                             processor.logger.warning(format!(
-                                "[{}] Failed to serialize block hash: {}",
+                                "[{}] Failed to get supported runes: {}",
                                 block_hash, e
                             ));
                             return;
                         }
                     };
 
-                    match processor
-                        .bitcoin_provider
-                        .call::<BlockWithTransactions>("getblock", &[block_hash_value, 2.into()])
-                    {
-                        Ok(block_from_rpc) => {
-                            attempts = 0;
-                            if block_from_rpc.confirmations >= *MIN_CONFIRMATIONS {
-                                processor.logger.info(format!(
-                                    "[{}] Processing block at height: {} with {} confirmations",
-                                    block_hash, block_from_rpc.height, block_from_rpc.confirmations
-                                ));
-
-                                if let Err(e) = process_block::process_block(
-                                    &processor, block_hash, block, true,
-                                )
-                                .await
-                                {
-                                    processor.logger.severe(format!(
-                                        "[{}] Error in process_block: {}",
-                                        block_hash, e
-                                    ));
-                                }
-                                return; // Done processing this block
-                            } else if block_from_rpc.confirmations == -1 {
-                                // block not included in the main chain
-                                processor.logger.warning(format!(
-                                    "[{}] Block was not integrated (confirmations = -1), stopping task",
-                                    block_hash
-                                ));
-                                return; // Stop task for this block
-                            } else {
-                                sleep(Duration::from_secs(60)).await;
-                            }
-                        }
+                let block_from_rpc =
+                    match get_block_from_rpc(&processor, block_hash_value.clone()).await {
+                        Ok(block_from_rpc) => block_from_rpc,
                         Err(e) => {
-                            processor.logger.warning(format!(
-                                "[{}] Failed to get block from RPC: {}, retrying in 1 minute",
-                                block_hash, e
-                            ));
-                            attempts += 1;
-                            if attempts > max_attempts {
-                                processor.logger.severe(format!(
-                                    "[{}] Failed to get block from RPC: {}, stopping task",
-                                    block_hash, e
-                                ));
-                                return; // Stop task for this block
-                            }
-                            sleep(Duration::from_secs(60)).await;
+                            processor
+                                .logger
+                                .warning(format!("Failed to get block from RPC: {}", e));
+                            return; // Stop task for this block
                         }
+                    };
+
+                let outputs_to_process = match process_block::parse_block(
+                    &processor,
+                    &mut session,
+                    block_from_rpc.height,
+                    block.clone(),
+                    supported_runes,
+                    // true,
+                )
+                .await
+                {
+                    Ok(outputs) => outputs,
+                    Err(e) => {
+                        processor
+                            .logger
+                            .warning(format!("[{}] Failed to parse block: {}", block_hash, e));
+                        return;
+                    }
+                };
+
+                if outputs_to_process.is_empty() {
+                    processor.logger.info(format!(
+                        "[{}] No outputs found to process. Stopping task.",
+                        block_from_rpc.height
+                    ));
+                    return;
+                }
+
+                processor.logger.info(format!(
+                    "[{}] {} outputs found to process:\n {}",
+                    block_from_rpc.height,
+                    outputs_to_process.len(),
+                    outputs_to_process
+                        .iter()
+                        .map(|o| format!("{}:{}", o.txid, o.output_index))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ));
+
+                processor.logger.info(format!(
+                    "[{}] Waiting for block to be confirmed",
+                    block_from_rpc.height
+                ));
+
+                // Waiting for the block to be confirmed
+                if wait_for_block_confirmation(&processor, block_hash_value.clone())
+                    .await
+                    .is_err()
+                {
+                    processor.logger.severe(format!(
+                        "[{}] Block was not integrated (confirmations = -1), stopping task",
+                        block_from_rpc.height
+                    ));
+                    return;
+                } else {
+                    processor.logger.info(format!(
+                        "[{}] Block was integrated. Processing outputs.",
+                        block_from_rpc.height
+                    ));
+                }
+
+                // process the outputs
+                for output in outputs_to_process {
+                    if let Err(e) =
+                        process_output(&processor, &mut session, output, block_hash, &runes_mapping)
+                            .await
+                    {
+                        processor
+                            .logger
+                            .severe(format!("[{}] {}", block_from_rpc.height, e));
                     }
                 }
+
+                processor.logger.info(format!(
+                    "[{}] Finished processing block. Stopping task.",
+                    block_from_rpc.height
+                ));
             });
         }
     });
