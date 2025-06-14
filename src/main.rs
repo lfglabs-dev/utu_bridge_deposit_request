@@ -78,88 +78,144 @@ async fn main() {
         ))
         .await;
 
-    // Spawn a task to listen for ZMQ messages and add blocks into state
-    let context = zmq::Context::new();
-    let subscriber = context.socket(zmq::SUB).expect("Failed to create socket");
-    subscriber
-        .connect(&format!(
-            "tcp://{}:{}",
-            env::var("BITCOIN_RPC_URL").expect("BITCOIN_RPC_URL must be set"),
-            env::var("ZMQ_PORT").expect("ZMQ_PORT must be set")
-        ))
-        .expect("Failed to connect to socket");
-
     shared_state
         .logger
         .info("Listening to separate deposit requests from Bitcoin to Starknet.");
     let _ = log_supported_runes(&shared_state).await;
-
-    subscriber
-        .set_subscribe(b"rawblock")
-        .expect("Failed to subscribe to hashblock");
 
     let (block_sender, mut block_receiver) = tokio::sync::mpsc::channel::<Block>(100); // Buffer size of 100
 
     let zmq_state = shared_state.clone();
     let zmq_sender = block_sender.clone();
     let zmq_task = tokio::spawn(async move {
+        // Outer loop for reconnection
         loop {
-            // Wait for a message from the socket
-            match subscriber.recv_msg(0) {
-                Ok(topic) => {
-                    if topic.as_str() == Some("rawblock") {
-                        zmq_state.logger.info("Received raw block");
-                        let raw_block_msg =
-                            subscriber.recv_msg(0).expect("Failed to receive raw block");
+            zmq_state.logger.info("Attempting to connect to ZMQ...");
 
-                        // Collect the bytes into a Vec<u8>, handling potential errors
-                        let raw_block_data: Vec<u8> =
-                            match raw_block_msg.bytes().collect::<Result<Vec<u8>, _>>() {
-                                Ok(data) => data,
+            // Create new ZMQ context and socket for each connection attempt
+            let context = zmq::Context::new();
+            let subscriber = match context.socket(zmq::SUB) {
+                Ok(socket) => socket,
+                Err(e) => {
+                    zmq_state.logger.warning(format!(
+                        "Failed to create ZMQ socket: {}, retrying in 5 seconds",
+                        e
+                    ));
+                    sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+
+            // Connect to ZMQ
+            if let Err(e) = subscriber.connect(&format!(
+                "tcp://{}:{}",
+                env::var("BITCOIN_RPC_URL").expect("BITCOIN_RPC_URL must be set"),
+                env::var("ZMQ_PORT").expect("ZMQ_PORT must be set")
+            )) {
+                zmq_state.logger.warning(format!(
+                    "Failed to connect to ZMQ: {}, retrying in 5 seconds",
+                    e
+                ));
+                sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+
+            // Subscribe to rawblock
+            if let Err(e) = subscriber.set_subscribe(b"rawblock") {
+                zmq_state.logger.warning(format!(
+                    "Failed to subscribe to rawblock: {}, retrying in 5 seconds",
+                    e
+                ));
+                sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+
+            zmq_state
+                .logger
+                .info("ZMQ connection established successfully");
+
+            loop {
+                match subscriber.recv_msg(zmq::DONTWAIT) {
+                    Ok(topic) => {
+                        if topic.as_str() == Some("rawblock") {
+                            zmq_state.logger.info("Received raw block");
+
+                            // Handle raw block message reception
+                            let raw_block_msg = match subscriber.recv_msg(0) {
+                                Ok(msg) => msg,
                                 Err(e) => {
-                                    zmq_state.logger.warning(format!(
-                                        "Failed to collect raw block bytes: {}",
-                                        e
-                                    ));
-                                    return; // Exit the current iteration if there's an error
+                                    zmq_state
+                                        .logger
+                                        .warning(format!("Failed to receive raw block: {}", e));
+                                    break; // Break inner loop to reconnect
                                 }
                             };
 
-                        zmq_state.logger.info("Deserializing raw block");
-
-                        match deserialize::<Block>(&raw_block_data) {
-                            Ok(block) => {
-                                let block_hash = block.block_hash();
-                                let block_height = if let Ok(height) = block.bip34_block_height() {
-                                    height.to_string()
-                                } else {
-                                    "unknown".to_string()
+                            // Collect the bytes into a Vec<u8>, handling potential errors
+                            let raw_block_data: Vec<u8> =
+                                match raw_block_msg.bytes().collect::<Result<Vec<u8>, _>>() {
+                                    Ok(data) => data,
+                                    Err(e) => {
+                                        zmq_state.logger.warning(format!(
+                                            "Failed to collect raw block bytes: {}",
+                                            e
+                                        ));
+                                        continue; // Continue processing other messages
+                                    }
                                 };
-                                zmq_state.logger.info(format!(
-                                    "Received block (height: {}) | Hash: {}",
-                                    block_height, block_hash
-                                ));
 
-                                if let Err(e) = zmq_sender.send(block).await {
-                                    zmq_state.logger.warning(format!(
-                                        "Failed to send block to processor: {}",
-                                        e
+                            zmq_state.logger.info("Deserializing raw block");
+
+                            match deserialize::<Block>(&raw_block_data) {
+                                Ok(block) => {
+                                    let block_hash = block.block_hash();
+                                    let block_height =
+                                        if let Ok(height) = block.bip34_block_height() {
+                                            height.to_string()
+                                        } else {
+                                            "unknown".to_string()
+                                        };
+                                    zmq_state.logger.info(format!(
+                                        "Received block (height: {}) | Hash: {}",
+                                        block_height, block_hash
                                     ));
+
+                                    if let Err(e) = zmq_sender.send(block).await {
+                                        zmq_state.logger.warning(format!(
+                                            "Failed to send block to processor: {}",
+                                            e
+                                        ));
+                                    }
                                 }
-                            }
-                            Err(e) => {
-                                // Handle deserialization errors
-                                zmq_state
-                                    .logger
-                                    .warning(format!("Failed to deserialize raw block: {}", e));
+                                Err(e) => {
+                                    // Handle deserialization errors
+                                    zmq_state
+                                        .logger
+                                        .warning(format!("Failed to deserialize raw block: {}", e));
+                                }
                             }
                         }
                     }
+                    Err(zmq::Error::EAGAIN) => {
+                        // No message available, continue loop
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        continue;
+                    }
+                    Err(e) => {
+                        zmq_state
+                            .logger
+                            .warning(format!("ZMQ connection error: {}, reconnecting...", e));
+                        break; // Break inner loop to reconnect
+                    }
                 }
-                Err(e) => eprintln!("Failed to receive message: {}", e),
+
+                sleep(Duration::from_millis(1)).await;
             }
 
-            sleep(Duration::from_millis(1)).await;
+            zmq_state
+                .logger
+                .warning("ZMQ connection lost, attempting to reconnect in 5 seconds...");
+            sleep(Duration::from_secs(5)).await;
         }
     });
 
