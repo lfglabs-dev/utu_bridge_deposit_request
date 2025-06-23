@@ -31,6 +31,13 @@ lazy_static::lazy_static! {
         .pool_max_idle_per_host(10)
         .build()
         .expect("Failed to create HTTP client");
+
+    static ref HTTP_SKIP_CERT_CHECK: Client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .pool_max_idle_per_host(10)
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("Failed to create HTTP client");
     static ref FORDEFI_DEPOSIT_VAULT_ID: String = env::var("FORDEFI_DEPOSIT_VAULT_ID").expect("FORDEFI_DEPOSIT_VAULT_ID must be set");
     static ref MIN_CONFIRMATIONS: i64 = env::var("MIN_CONFIRMATIONS").expect("MIN_CONFIRMATIONS must be set").parse::<i64>().expect("MIN_CONFIRMATIONS must be a valid i64");
     static ref POLLING_BLOCK_DELAY_SEC: u64 = env::var("POLLING_BLOCK_DELAY_SEC").expect("POLLING_BLOCK_DELAY_SEC must be set").parse::<u64>().expect("POLLING_BLOCK_DELAY_SEC must be a valid u64");
@@ -265,9 +272,8 @@ fn fetch_bitcoin_transaction_info(
 pub async fn get_ord_data(txid: String, vout: usize) -> Result<OrdOutputResult> {
     let mut attempts = 0;
     loop {
-        let url = format!("https://{}/output/{}:{}", *ORD_NODE_URL, txid, vout);
-
-        match HTTP_CLIENT
+        let url = format!("http://{}/output/{}:{}", *ORD_NODE_URL, txid, vout);
+        match HTTP_SKIP_CERT_CHECK
             .get(&url)
             .header("Accept", "application/json")
             .send()
