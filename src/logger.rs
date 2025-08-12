@@ -50,8 +50,6 @@ struct LogPayload<'a> {
 impl Logger {
     #![allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        env_logger::init();
-
         let watchtower_enabled =
             env::var("WATCHTOWER_ENABLED").unwrap_or_else(|_| "false".to_string()) == "true";
 

@@ -32,10 +32,23 @@ use utils::runes::log_supported_runes;
 
 lazy_static::lazy_static! {
     pub static ref ROUTE_REGISTRY: Mutex<Vec<Box<dyn WithState>>> = Mutex::new(Vec::new());
+    // Module-specific defaults to reduce noise; user RUST_LOG can override them if it specifies the same modules
+    pub static ref DEFAULT_LOG_FILTER: String = {
+        // Silence hyper debug noise by default, keep third-party HTTP libs at warn
+        "hyper=off,reqwest=warn,hyper_util=warn,h2=warn".to_string()
+    };
 }
 
 #[tokio::main]
 async fn main() {
+    // Initialize logging as early as possible
+    // Combine our module defaults with the user's RUST_LOG (user directives placed last to allow overrides)
+    let user_filter = env::var("RUST_LOG").unwrap_or_else(|_| "warn".to_string());
+    let combined_filter = format!("{},{}", DEFAULT_LOG_FILTER.as_str(), user_filter);
+    env_logger::Builder::new()
+        .parse_filters(&combined_filter)
+        .init();
+
     let shared_state: Arc<AppState> = AppState::load().await;
     shared_state
         .logger
